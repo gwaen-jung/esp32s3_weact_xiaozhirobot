@@ -1,3 +1,9 @@
+<div align="center">
+
+<img src="assets/banner.svg" alt="CINQ - RESHAPE LAB. Automation, PCB, hardware, 3D engineer. Flight test, firmware STM32 and ESP, UAV, USV. Stack: C++, Python, Verilog. GitHub statistics." width="100%">
+
+</div>
+
 # esp32s3_weact_xiaozhirobot
 
 Firmware trợ lý ảo AI để bàn Xiaozhi (Xiaozhi Desktop Robot) trên nền tảng **ESP32-S3 WeAct N16R8** kết hợp màn hình **GMT147SPI IPS**, micro INMP441, loa MAX98357A, cảm biến khoảng cách ToF và 4 Servo biểu cảm.
