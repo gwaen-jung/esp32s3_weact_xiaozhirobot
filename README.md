@@ -1,6 +1,15 @@
-﻿# Xiaozhi AI Voice Assistant & Desktop Robot 🤖
+# esp32s3_weact_xiaozhirobot
 
-Dự án trợ lý ảo AI để bàn tương tác giọng nói và cử động cơ khí (Xiaozhi Robot), phát triển trên nền tảng **ESP32-S3 WeAct N16R8** kết hợp màn hình **GMT147SPI IPS**.
+Firmware trợ lý ảo AI để bàn Xiaozhi (Xiaozhi Desktop Robot) trên nền tảng **ESP32-S3 WeAct N16R8** kết hợp màn hình **GMT147SPI IPS**, micro INMP441, loa MAX98357A, cảm biến khoảng cách ToF và 4 Servo biểu cảm.
+
+| Env | Board | Vai trò |
+|---|---|---|
+| `esp32s3_xiaozhi` | WeAct ESP32-S3 N16R8 | Firmware chính điều khiển robot (Voice IO, Display, ToF, Servos) |
+
+```bash
+pio run -e esp32s3_xiaozhi -t upload
+pio device monitor -b 115200
+```
 
 ---
 
@@ -22,16 +31,16 @@ Dự án trợ lý ảo AI để bàn tương tác giọng nói và cử động
 ## 📌 Sơ đồ chân nối (Pinout Mapping)
 
 ### 1. Màn hình GMT147SPI (SPI3 / HSPI)
-| Chân màn hình | Chân ESP32-S3 | Ghi chú |
-| :--- | :--- | :--- |
-| **VCC** | 3.3V | Nguồn 3.3V |
-| **GND** | GND | Mass chung |
-| **SCL** | GPIO 40 | SPI Clock (HSPI) |
-| **SDA** | GPIO 41 | MOSI (HSPI) |
-| **RES** | GPIO 47 | Reset màn hình |
-| **DC**  | GPIO 38 | Data / Command |
-| **CS**  | GPIO 39 | Chip Select |
-| **BL**  | 3.3V | Nối thẳng 3.3V (không cần software PWM) |
+| Linh kiện | Chân linh kiện | Chân ESP32-S3 | Ghi chú |
+| :--- | :--- | :--- | :--- |
+| **GMT147SPI** | VCC | 3.3V | Nguồn 3.3V |
+| | GND | GND | Nối mass chung |
+| | SCL | GPIO 40 | SPI Clock (HSPI) |
+| | SDA | GPIO 41 | MOSI (HSPI) |
+| | RES | GPIO 47 | Reset cứng màn hình |
+| | DC  | GPIO 38 | Data / Command |
+| | CS  | GPIO 39 | Chip Select |
+| | BL  | 3.3V | Nối thẳng 3.3V (không dùng software PWM để tránh đụng LED RGB) |
 
 ### 2. Âm thanh I2S (Micro & Loa)
 | Cụm | Chân module | Chân ESP32-S3 | Ghi chú |
@@ -51,10 +60,10 @@ Dự án trợ lý ảo AI để bàn tương tác giọng nói và cử động
 | **ToF SDA** | GPIO 8 | I2C Data |
 | **ToF SCL** | GPIO 9 | I2C Clock |
 | **ToF XSHUT** | GPIO 21 | Bật/tắt cảm biến |
-| **Servo 1** | GPIO 4 | PWM 50Hz (Pan) |
-| **Servo 2** | GPIO 5 | PWM 50Hz (Tilt) |
-| **Servo 3** | GPIO 6 | PWM 50Hz (Arm Left) |
-| **Servo 4** | GPIO 7 | PWM 50Hz (Arm Right) |
+| **Servo 1** | GPIO 4 | PWM 50Hz (Pan cổ) |
+| **Servo 2** | GPIO 5 | PWM 50Hz (Tilt gật) |
+| **Servo 3** | GPIO 6 | PWM 50Hz (Tay trái) |
+| **Servo 4** | GPIO 7 | PWM 50Hz (Tay phải) |
 | **Status RGB** | GPIO 48 | WS2812 tích hợp trên board |
 | **Wake Button** | GPIO 1 | Nút nhấn PTT / Đánh thức |
 
@@ -63,22 +72,9 @@ Dự án trợ lý ảo AI để bàn tương tác giọng nói và cử động
 ## ⚡ Lưu ý nguồn điện & Chống nhiễu Audio
 
 1. **Dòng tải đỉnh**: 4 Servo khi chuyển động đồng thời có thể ngốn 1.5A - 2.4A. Luôn cấp nguồn 5V từ mạch Buck WeAct (nguồn pin 2S) hoặc Adapter 5V 3A riêng cho servo, **KHÔNG lấy nguồn từ chân 3.3V của ESP32 cấp cho servo**.
-2. **Lọc nguồn**: Đặt 1 tụ hóa $470\mu F - 1000\mu F$ ngay tại cổng cấp nguồn 5V của servo để tránh sụt áp gây reset ESP32.
+2. **Lọc nguồn**: Đặt 1 tụ hóa 470µF - 1000µF ngay tại cổng cấp nguồn 5V của servo để tránh sụt áp gây reset ESP32.
 3. **Nối mass hình sao (Star Grounding)**: Dây mass GND từ nguồn chia nhánh riêng: 1 nhánh cho cụm Servo, 1 nhánh cho ESP32 và Audio để khử hiện tượng rè/sôi loa khi servo quay.
 
 ---
 
-## 🚀 Hướng dẫn biên dịch & Nạp code
-
-Cài đặt [PlatformIO IDE](https://platformio.org/):
-
-```bash
-# Biên dịch firmware
-pio run -e esp32s3_xiaozhi
-
-# Nạp firmware vào board qua cổng USB Native
-pio run -e esp32s3_xiaozhi -t upload
-
-# Mở serial monitor
-pio device monitor -b 115200
-```
+Hệ sinh thái liên quan: [DRONE_TEST](https://github.com/gwaen-jung/DRONE_TEST) | [JS-CONTROLER](https://github.com/gwaen-jung/JS-CONTROLER) | [GCS-STATION](https://github.com/gwaen-jung/GCS-STATION).
