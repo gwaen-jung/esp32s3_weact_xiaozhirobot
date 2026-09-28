@@ -1,15 +1,21 @@
-# esp32s3_weact_xiaozhirobot
+<div align="center">
 
-Firmware trợ lý AI để bàn Xiaozhi (Xiaozhi Desktop Robot) phát triển trên nền tảng **ESP32-S3 WeAct CoreBoard N16R8** (16MB Flash, 8MB PSRAM OPI). 
+<img src="docs/banner.svg" alt="XIAOZHI-ROBOT by RESHAPE LAB: desktop AI robot assistant firmware, ESP32-S3 WeAct N16R8, audio, vision, motion" width="100%">
 
-Robot tích hợp giao tiếp giọng nói 2 chiều (Micro INMP441 + Loa MAX98357A), màn hình IPS **GMT147SPI** hiển thị biểu cảm/avatar động, cảm biến khoảng cách **VL53L0X/1X** nhận diện người lại gần/vẫy tay đánh thức, và **4 động cơ Servo 180°** điều khiển cử động đầu Pan/Tilt và cánh tay.
+</div>
 
-| Env PlatformIO | Board MCU | Vai trò kỹ thuật | Lệnh nạp firmware |
-|---|---|---|---|
+# XIAOZHI-ROBOT
+
+Firmware trợ lý AI để bàn **Xiaozhi Desktop Robot** phát triển trên nền tảng vi điều khiển **ESP32-S3 WeAct CoreBoard N16R8** (16MB Flash, 8MB PSRAM OPI). 
+
+Robot tích hợp tương tác giọng nói 2 chiều (Micro MEMS INMP441 + Khuếch đại I2S MAX98357A), màn hình IPS **GMT147SPI** hiển thị avatar/biểu cảm động và logo boot ReShape Lab, cảm biến quang học ToF **VL53L0X / VL53L1X** nhận diện người lại gần / vẫy tay đánh thức, cùng hệ thống **4 động cơ Servo 180°** điều khiển cử động đầu (Pan/Tilt) và 2 cánh tay.
+
+| Môi trường (Env) | Bo mạch MCU | Vai trò kỹ thuật | Lệnh nạp firmware |
+| :--- | :--- | :--- | :--- |
 | `esp32s3_xiaozhi` | WeAct ESP32-S3-A N16R8 | Firmware chính robot Xiaozhi | `pio run -e esp32s3_xiaozhi -t upload` |
 
 ```bash
-# Biên dịch và nạp firmware
+# Biên dịch và nạp firmware qua cổng Type-C Native
 pio run -e esp32s3_xiaozhi -t upload
 
 # Mở serial monitor (115200 baud)
@@ -37,33 +43,27 @@ pio device monitor -b 115200
 Vị trí chân thực tế trên board WeAct ESP32-S3 CoreBoard (Bản A):
 
 ```
-                             ┌────────────────────────┐
-                             │   WeAct ESP32-S3-A     │
-                             │      (Ăng-ten PCB)     │
-                       3V3 ──┤ 3V3                GND ├── GND (Mass chung)
-                       3V3 ──┤ 3V3                 5V ├── 5V (Nguồn 5V từ Buck WeAct)
-                             │ EN                 TX0 ├── GPIO43 (UART0 TX Debug)
-           Servo 1 (Pan) ────┤ GPIO4              RX0 ├── GPIO44 (UART0 RX Debug)
-          Servo 2 (Tilt) ────┤ GPIO5            GPIO1 ├── Nút Wake / PTT (Active-Low)
-        Servo 3 (Arm L) ─────┤ GPIO6            GPIO2 ├── (Dự phòng ADC1)
-        Servo 4 (Arm R) ─────┤ GPIO7           GPIO42 ├── (Dự phòng MISO)
-       INMP441 SCK (I2S) ────┤ GPIO15          GPIO41 ├── GMT147 SDA (MOSI)
-        INMP441 WS (I2S) ────┤ GPIO16          GPIO40 ├── GMT147 SCL (SCLK)
-        INMP441 SD (I2S) ────┤ GPIO17          GPIO39 ├── GMT147 CS
-              (Dự phòng) ────┤ GPIO18          GPIO38 ├── GMT147 DC
-             ToF SDA (I2C) ──┤ GPIO8           GPIO37 ├── [PSRAM OPI - Cấm dùng]
-             ToF SCL (I2C) ──┤ GPIO9           GPIO36 ├── [PSRAM OPI - Cấm dùng]
-              (Dự phòng) ────┤ GPIO10          GPIO35 ├── [PSRAM OPI - Cấm dùng]
-              (Dự phòng) ────┤ GPIO11           GPIO0 ├── [BOOT - Nút trên board]
-      MAX98357A BCLK ────────┤ GPIO12          GPIO45 ├── [Strapping - Cấm dùng]
-       MAX98357A LRC ────────┤ GPIO13          GPIO46 ├── [Strapping - Cấm dùng]
-       MAX98357A DIN ────────┤ GPIO14           GPIO3 ├── [JTAG - Cấm dùng]
-           ToF XSHUT ────────┤ GPIO21          GPIO19 ├── [USB D- Native]
-          GMT147 RES ────────┤ GPIO47          GPIO20 ├── [USB D+ Native]
-       [WS2812 RGB LED] ─────┤ GPIO48             GND ├── GND
-                       GND ──┤ GND                3V3 ├── 3V3 (Cấp cho GMT147/INMP441/ToF)
-                             └────────────────────────┘
-                                      [USB-C]
+                             ┌───────────────────┐
+                       3.3V ─┤ 3V3           GND ├─ GND
+                        EN  ─┤ EN             44 ├─ (UART0 RX)
+          MIC_WS (INMP441)  ─┤ 4              43 ├─ (UART0 TX)
+          MIC_SCK(INMP441)  ─┤ 5              42 ├─ TFT_MISO (HSPI)
+          MIC_SD (INMP441)  ─┤ 6              41 ├─ TFT_MOSI (HSPI)
+          TOF_SDA (VL53L0X) ─┤ 7              40 ├─ TFT_SCLK (HSPI)
+          TOF_SCL (VL53L0X) ─┤ 8              39 ├─ TFT_CS (HSPI)
+               SERVO_1_PAN  ─┤ 9              38 ├─ TFT_DC
+              SERVO_2_TILT  ─┤ 10             37 ├─ (PSRAM OPI - Cam dung)
+              SERVO_3_ARM_L ─┤ 11             36 ├─ (PSRAM OPI - Cam dung)
+              SERVO_4_ARM_R ─┤ 12             35 ├─ (PSRAM OPI - Cam dung)
+             SPK_BCLK (MAX) ─┤ 15              0 ├─ BOOT Button
+              SPK_LRC (MAX) ─┤ 16             45 ├─ (Strapping - Cam dung)
+              SPK_DIN (MAX) ─┤ 17             48 ├─ WS2812 RGB LED Onboard
+              SPK_SD  (MAX) ─┤ 18             47 ├─ TFT_RST
+               USB D-       ─┤ 19             21 ├─ (Du phong GPIO)
+               USB D+       ─┤ 20             14 ├─ (Du phong GPIO)
+                        5V  ─┤ 5V             13 ├─ (Du phong GPIO)
+                             └───────────────────┘
+                                     [USB-C]
 ```
 
 ### Bảng tra cứu chân chi tiết
@@ -80,26 +80,28 @@ Vị trí chân thực tế trên board WeAct ESP32-S3 CoreBoard (Bản A):
 | | BL  | 3V3 | 3.3V | **Nối thẳng 3.3V**, không nối GPIO48 để tránh đụng LED RGB |
 | **Micro INMP441** | VDD | 3V3 | 3.3V | Không cấp 5V |
 | | GND | GND | 0V | |
-| | SCK | **GPIO 15** | 3.3V | I2S0 Bit Clock |
-| | WS  | **GPIO 16** | 3.3V | I2S0 Word Select (LRCK) |
-| | SD  | **GPIO 17** | 3.3V | I2S0 Serial Data In |
+| | SCK | **GPIO 5** | 3.3V | I2S0 Bit Clock |
+| | WS  | **GPIO 4** | 3.3V | I2S0 Word Select (LRCK) |
+| | SD  | **GPIO 6** | 3.3V | I2S0 Serial Data In |
 | | L/R | GND | 0V | Kéo xuống GND để thu kênh trái |
 | **Loa MAX98357A** | VIN | **5V** | 5.0V | **Bắt buộc cấp 5V từ Buck** để đạt công suất 3W |
 | | GND | GND | 0V | |
-| | BCLK | **GPIO 12** | 3.3V | I2S1 Bit Clock |
-| | LRC  | **GPIO 13** | 3.3V | I2S1 Word Select |
-| | DIN  | **GPIO 14** | 3.3V | I2S1 Data Out |
+| | BCLK | **GPIO 15** | 3.3V | I2S1 Bit Clock |
+| | LRC  | **GPIO 16** | 3.3V | I2S1 Word Select |
+| | DIN  | **GPIO 17** | 3.3V | I2S1 Data Out |
+| | SD_MODE | **GPIO 18** | 3.3V | Mute/Shutdown control (Active High) |
 | | GAIN | GND | 0V | Mặc định 12dB (hoặc 100k lên GND để chọn 9dB) |
 | **ToF VL53L0X/1X** | VIN | 3V3 | 3.3V | Cảm biến chạy 3.3V |
 | | GND | GND | 0V | |
-| | SDA | **GPIO 8** | 3.3V | I2C Data |
-| | SCL | **GPIO 9** | 3.3V | I2C Clock |
-| | XSHUT | **GPIO 21** | 3.3V | Bật/tắt cảm biến bằng phần mềm |
+| | SDA | **GPIO 7** | 3.3V | I2C Data |
+| | SCL | **GPIO 8** | 3.3V | I2C Clock |
 | **4× Servo 180°** | VCC (Đỏ) | **5V Buck** | 5.0V | **Tuyệt đối không lấy từ 3.3V của ESP32** |
 | | GND (Nâu/Đen) | GND | 0V | Nối mass chung về trạm nguồn |
-| | Signal (Vàng/Cam) | **GPIO 4, 5, 6, 7** | 3.3V | Điều khiển xung PWM (LEDC channel 0..3, 50Hz) |
-| **Nút bấm / Status** | Wake Button | **GPIO 1** | 3.3V | Nút nhấn kéo xuống GND khi nhấn (Internal Pull-up) |
-| | RGB LED | **GPIO 48** | 3.3V | Đèn WS2812 tích hợp sẵn trên board WeAct |
+| | Signal (Vàng/Cam) | **GPIO 9, 10, 11, 12** | 3.3V | Điều khiển xung PWM (LEDC channel 0..3, 50Hz) |
+| **Status LED** | RGB LED | **GPIO 48** | 3.3V | Đèn WS2812 tích hợp sẵn trên board WeAct |
+
+> [!NOTE]
+> Cần tuân thủ phân tách 2 bus I2S riêng biệt trên ESP32-S3: **I2S0** dành cho Microphone thu âm (INMP441) và **I2S1** dành cho Speaker phát âm thanh (MAX98357A) để tránh nghẽn xung nhịp và nhiễu tín hiệu.
 
 ---
 
@@ -119,6 +121,27 @@ Vị trí chân thực tế trên board WeAct ESP32-S3 CoreBoard (Bản A):
      - *Nhánh 1*: Chạy thẳng về chân GND của 4 Servo.
      - *Nhánh 2*: Chạy về chân GND của ESP32, màn hình, Micro và Loa.
      - *Không đi dây GND nối tiếp (daisy-chain) qua cụm servo rồi mới về micro/loa*.
+
+```
+ [ Pin Lipo 2S (7.4V - 8.4V) / Nguon DC 9V-12V ]
+                        │
+                        ▼
+         ┌───────────────────────────────┐
+         │     WeAct Buck DC/DC (5V 3A)   │
+         └──────────────┬────────────────┘
+                        │ Đường nguồn 5.0V (Dây lớn >= 22AWG)
+            ┌───────────┴───────────┐
+            │                       │
+            ▼                       ▼
+   ┌─────────────────┐     ┌────────────────────────┐
+   │ Chân 5V ESP32-S3 │     │ VCC (+) 4 Động cơ Servo │
+   │ (Nuôi MCU + TFT) │     │ (Dong khoi dong > 1.5A)│
+   └─────────────────┘     └────────────────────────┘
+            │                       │
+            └───────────┬───────────┘
+                        ▼
+                 [ GND Chung ]
+```
 
 ---
 
@@ -143,4 +166,16 @@ Vị trí chân thực tế trên board WeAct ESP32-S3 CoreBoard (Bản A):
 
 ---
 
-Hệ sinh thái liên quan: [DRONE_TEST](https://github.com/gwaen-jung/DRONE_TEST) | [JS-CONTROLER](https://github.com/gwaen-jung/JS-CONTROLER) | [GCS-STATION](https://github.com/gwaen-jung/GCS-STATION) | [QUAD-UAV](https://github.com/gwaen-jung/QUAD-UAV).
+## 🔗 Liên kết Hệ sinh thái (Related Repos)
+
+Dự án Xiaozhi Robot là một thành phần trong hệ sinh thái điều khiển nhúng **TRIAD / ReShape Lab**:
+
+* **[QUAD-UAV](https://github.com/trungnguyenhpa-cpu/QUAD-UAV)**: Firmware điều khiển bay Quadcopter phối hợp ESP32 (Flight Link) và STM32F103 (Cascade PID).
+* **[JS-CONTROLER](https://github.com/trungnguyenhpa-cpu/JS-CONTROLER)**: Firmware tay cầm điều khiển 2 joystick, màn hình kép TFT & OLED, âm thanh I2S.
+* **[DRONE_TEST](https://github.com/gwaen-jung/DRONE_TEST)**: Workspace tổng hợp phát triển firmware và kiểm thử phần cứng.
+
+---
+
+<div align="center">
+  <sub>Developed by <b>Cinq / ReShape Lab</b> • Robotics &amp; Autonomous Systems</sub>
+</div>
