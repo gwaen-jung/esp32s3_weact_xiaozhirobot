@@ -8,7 +8,7 @@
 
 Firmware trợ lý AI để bàn **Xiaozhi Desktop Robot** phát triển trên nền tảng vi điều khiển **ESP32-S3 WeAct CoreBoard N16R8** (16MB Flash, 8MB PSRAM OPI). 
 
-Robot tích hợp tương tác giọng nói 2 chiều (Micro MEMS INMP441 + Khuếch đại I2S MAX98357A), màn hình IPS **GMT147SPI** hiển thị avatar/biểu cảm động và logo boot ReShape Lab, cảm biến quang học ToF **VL53L0X / VL53L1X** nhận diện người lại gần / vẫy tay đánh thức, cùng hệ thống **4 động cơ Servo 180°** điều khiển cử động đầu (Pan/Tilt) và 2 cánh tay.
+Robot tích hợp tương tác giọng nói 2 chiều (Micro MEMS INMP441 + Khuếch đại I2S MAX98357A), màn hình **OLED SSD1306** hiển thị avatar/biểu cảm động và logo boot ReShape Lab, cảm biến quang học ToF **VL53L0X / VL53L1X** nhận diện người lại gần / vẫy tay đánh thức, cùng hệ thống **4 động cơ Servo 180°** điều khiển cử động đầu (Pan/Tilt) và 2 cánh tay.
 
 | Môi trường (Env) | Bo mạch MCU | Vai trò kỹ thuật | Lệnh nạp firmware |
 | :--- | :--- | :--- | :--- |
@@ -29,7 +29,7 @@ pio device monitor -b 115200
 | Cụm chức năng | Linh kiện | Giao tiếp | Vai trò trong Robot | Ghi chú kỹ thuật |
 | :--- | :--- | :--- | :--- | :--- |
 | **Xử lý trung tâm** | WeAct ESP32-S3 CoreBoard | — | Chạy FreeRTOS, xử lý Audio/WiFi, điều khiển ngoại vi | Bản A (N16R8: 16MB Flash, 8MB PSRAM OPI) |
-| **Màn hình biểu cảm** | GMT147SPI (ST7789V3) | SPI (HSPI) | Hiển thị mắt biểu cảm, cử động miệng, HUD thông số | IPS 172×320 pixel, 262K màu |
+| **Màn hình biểu cảm** | OLED SSD1306 | I2C | Hiển thị mắt biểu cảm, cử động miệng, HUD thông số | 128×64 pixel, Đơn sắc |
 | **Micro thu âm** | INMP441 MEMS | I2S (I2S0) | Thu giọng nói người dùng gửi lên server STT/LLM | Micro kỹ thuật số 24-bit, độ nhạy cao |
 | **Phát âm thanh** | MAX98357A | I2S (I2S1) | Khuếch đại âm thanh phản hồi từ server TTS | Mạch DAC/Amp Class-D công suất 3W |
 | **Cảm biến khoảng cách**| VL53L0X / VL53L1X v2 | I2C | Nhận diện người lại gần, nhận diện cử chỉ vẫy tay | Cảm biến ToF đo khoảng cách bằng laser |
@@ -70,14 +70,10 @@ Vị trí chân thực tế trên board WeAct ESP32-S3 CoreBoard (Bản A):
 
 | Cụm thiết bị | Chân linh kiện | Chân ESP32-S3 | Điện áp | Ghi chú kỹ thuật |
 | :--- | :--- | :--- | :--- | :--- |
-| **Màn hình GMT147SPI** | VCC | 3V3 | 3.3V | Lấy nguồn 3.3V từ board |
+| **Màn hình OLED SSD1306** | VCC | 3V3 | 3.3V | Lấy nguồn 3.3V từ board |
 | | GND | GND | 0V | Nối mass chung |
-| | SCL | **GPIO 40** | 3.3V | SPI Clock — Bắt buộc dùng bus SPI3 (HSPI) |
-| | SDA | **GPIO 41** | 3.3V | MOSI (HSPI) |
-| | CS  | **GPIO 39** | 3.3V | Chip Select |
-| | DC  | **GPIO 38** | 3.3V | Data / Command |
-| | RES | **GPIO 47** | 3.3V | Reset cứng màn hình |
-| | BL  | 3V3 | 3.3V | **Nối thẳng 3.3V**, không nối GPIO48 để tránh đụng LED RGB |
+| | SCL | **GPIO 9** | 3.3V | I2C Clock (Dùng chung bus với ToF) |
+| | SDA | **GPIO 8** | 3.3V | I2C Data (Dùng chung bus với ToF) |
 | **Micro INMP441** | VDD | 3V3 | 3.3V | Không cấp 5V |
 | | GND | GND | 0V | |
 | | SCK | **GPIO 5** | 3.3V | I2S0 Bit Clock |
@@ -151,14 +147,14 @@ Vị trí chân thực tế trên board WeAct ESP32-S3 CoreBoard (Bản A):
   - `GPIO 0, 3, 45, 46`: Chân cấu hình khởi động (Strapping pins).
   - `GPIO 19, 20`: Kênh USB D- / D+ Native (dùng để nạp firmware và in Serial CDC).
   - `GPIO 35, 36, 37`: Kết nối trực tiếp với chip PSRAM OPI 8MB bên trong module. Không được cấu hình làm GPIO thường.
-- **Cờ biên dịch màn hình**: Màn hình GMT147SPI cắm ở GPIO 40/41 bắt buộc phải định nghĩa cờ `-DUSE_HSPI_PORT=1` trong `platformio.ini` để thư viện `TFT_eSPI` sử dụng bộ điều khiển SPI3 (HSPI), tránh lỗi crash loop `StoreProhibited`.
-- **Lỗi font TFT_eSPI**: Font 6 chỉ chứa số (0–9), không hiển thị được chữ cái. Để hiển thị chữ to cần dùng Font 4 với `tft.setTextSize(2)`.
+- **Cờ biên dịch màn hình**: Màn hình OLED SSD1306 dùng chung bus I2C với cảm biến ToF, hãy đảm bảo khởi tạo đúng cấu hình I2C cho thư viện Adafruit SSD1306.
+- **Lỗi font OLED**: Khi dùng Adafruit GFX, lưu ý chọn font phù hợp để hiển thị số và chữ to nếu cần (VD: `FreeSans9pt7b`).
 
 ---
 
 ## 🗺 Lộ trình Phát triển (Development Roadmap)
 
-- [x] **Phase 1: Display & UI Engine**: Khởi tạo màn hình GMT147SPI, render ReShape Logo animation (Sprite 1bpp chống giật, ~35 FPS), thanh HUD stats và dải Marquee chạy chữ.
+- [x] **Phase 1: Display & UI Engine**: Khởi tạo màn hình OLED SSD1306, render ReShape Logo animation, thanh HUD stats và dải Marquee chạy chữ.
 - [ ] **Phase 2: I2S Audio Bring-up**: Kiểm tra thu âm micro INMP441 và phát âm thanh qua MAX98357A.
 - [ ] **Phase 3: Sensor & Servo Integration**: Đọc khoảng cách từ VL53L0X/1X, tạo thuật toán điều khiển 4 servo biểu cảm mượt mà (chuyển động gia tốc S-curve).
 - [ ] **Phase 4: Xiaozhi Cloud AI Protocol**: Tích hợp giao thức WebSocket / MQTT kết nối server Xiaozhi (STT, LLM, TTS Opus streaming).

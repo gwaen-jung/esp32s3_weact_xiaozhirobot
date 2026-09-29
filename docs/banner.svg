@@ -101,8 +101,8 @@
       <text class="sans" font-size="30" fill="#F1EFE8" x="100" y="951">INMP441 MEMS Mic (I2S0) and MAX98357A Amp (I2S1)</text>
       <text class="mono" font-size="19" fill="#77756E" x="100" y="985">I2S Dual-Bus Audio Pipeline</text>
       <text class="mono" font-size="19" letter-spacing="4.5" fill="#8B8983" x="100" y="1050">DISPLAY</text>
-      <text class="sans" font-size="30" fill="#F1EFE8" x="100" y="1091">GMT147SPI 1.47" ST7789V3 (172x320) IPS</text>
-      <text class="mono" font-size="19" fill="#77756E" x="100" y="1125">SPI3 HSPI  &#183;  Dynamic Avatar &amp; ReShape Boot Animations</text>
+      <text class="sans" font-size="30" fill="#F1EFE8" x="100" y="1091">OLED 0.96" SSD1306 (128x64) I2C</text>
+      <text class="mono" font-size="19" fill="#77756E" x="100" y="1125">I2C Bus  &#183;  Dynamic Avatar &amp; System Status HUD</text>
       <text class="mono" font-size="19" letter-spacing="4.5" fill="#8B8983" x="100" y="1190">SENSORS &amp; ACTUATORS</text>
       <text class="sans" font-size="30" fill="#F1EFE8" x="100" y="1231">VL53L0X/1X ToF Distance Sensor &amp; 4x 180&#176; Servos</text>
       <text class="mono" font-size="19" fill="#77756E" x="100" y="1265">I2C Proximity Wakeup  &#183;  LEDC PWM Head &amp; Arm Motion</text>
