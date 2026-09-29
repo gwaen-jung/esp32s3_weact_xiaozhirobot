@@ -100,6 +100,39 @@
 <text x="992" y="280" font-size="12.5" fill="#c2255c">⚡ CẤP NGUỒN 5V RIÊNG (Buck)</text>
 <text x="992" y="300" font-size="12.5" fill="#57606a">⚡ Tuyệt đối không lấy 5V từ ESP32</text>
 
+<!-- RIGHT: Power System (LiPo & Buck) -->
+<rect x="980" y="350" width="240" height="296" rx="10" fill="#f6f8fa" stroke="#e03131" stroke-width="2.5"/>
+<text x="992" y="372" font-size="16" font-weight="700" fill="#e03131">Hệ thống Nguồn (Power)</text>
+
+<!-- LiPo 2S -->
+<rect x="1000" y="396" width="200" height="40" rx="4" fill="#343a40"/>
+<text x="1100" y="420" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">Pin Lipo 2S (7.4V - 8.4V)</text>
+
+<!-- Buck 5V -->
+<line x1="1100" y1="436" x2="1100" y2="466" stroke="#e03131" stroke-width="2"/>
+<polygon points="1096,462 1104,462 1100,468" fill="#e03131"/>
+<rect x="1000" y="468" width="200" height="40" rx="4" fill="#e03131"/>
+<text x="1100" y="492" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">Buck DC-DC (Ra 5.0V 3A)</text>
+
+<!-- 5V and GND outputs -->
+<text x="992" y="534" font-size="13" font-weight="700" fill="#c92a2a">Đầu ra 5V (Dây lớn):</text>
+<text x="992" y="554" font-size="13" fill="#1f2328">- Cấp trực tiếp cho VCC 4 Servo</text>
+<text x="992" y="574" font-size="13" fill="#1f2328">- Cấp vào chân 5V của ESP32</text>
+
+<text x="992" y="604" font-size="13" font-weight="700" fill="#1f2328">GND (Star Grounding):</text>
+<text x="992" y="624" font-size="13" fill="#1f2328">- Phân 2 nhánh từ Buck GND</text>
+<text x="992" y="644" font-size="13" fill="#1f2328">- Tụ bù 470µF tại trạm 5V Servo</text>
+
+<!-- Connection to MCU -->
+<line x1="980" y1="568" x2="790" y2="568" stroke="#e03131" stroke-width="3" stroke-dasharray="5,5"/>
+<circle cx="980" cy="568" r="5" fill="#e03131"/>
+<circle cx="790" cy="568" r="6" fill="#ffd43b" stroke="#000" stroke-width="1"/>
+<text x="776" y="573" text-anchor="end" font-size="14" font-weight="700" fill="#ffffff">5V (Nuôi MCU)</text>
+
+<line x1="980" y1="618" x2="790" y2="618" stroke="#343a40" stroke-width="3" stroke-dasharray="5,5"/>
+<circle cx="980" cy="618" r="5" fill="#343a40"/>
+<circle cx="790" cy="618" r="6" fill="#ffd43b" stroke="#000" stroke-width="1"/>
+<text x="776" y="623" text-anchor="end" font-size="14" font-weight="700" fill="#ffffff">GND</text>
 <!-- Notes at the bottom -->
 <text x="60" y="730" font-size="14" fill="#1f2328">• Nguồn: Các module logic, cảm biến, micro lấy 3V3 của board ESP32.</text>
 <text x="60" y="752" font-size="14" fill="#1f2328">• Động cơ Servo lấy dòng đỉnh rất cao, bắt buộc qua mạch hạ áp (Buck 5V 3A) nối trực tiếp vào pin 2S.</text>
