@@ -73,13 +73,13 @@ static Adafruit_ILI9341 tft(&tftSPI, TFT_DC, TFT_CS, TFT_RST);
 #define AUDIO_RATE     16000
 
 // --- CẤU HÌNH 4 SERVO ---
-#define PIN_SERVO_FL   6
-#define PIN_SERVO_FR   7
-#define PIN_SERVO_RL   4
-#define PIN_SERVO_RR   5
+#define PIN_SERVO_FL   7  // Chân Trên Trái (180°)
+#define PIN_SERVO_FR   4  // Chân Trên Phải (Servo 360°)
+#define PIN_SERVO_RL   6  // Chân Dưới Trái (180°)
+#define PIN_SERVO_RR   5  // Chân Dưới Phải (180°)
 
 const int SERVO_PINS[] = {PIN_SERVO_FL, PIN_SERVO_FR, PIN_SERVO_RL, PIN_SERVO_RR};
-const char* LEG_NAMES[] = {"FL (Tr-Tr)", "FR (Tr-Ph)", "RL (Sau-Tr)", "RR (Sau-Ph)"};
+const char* LEG_NAMES[] = {"FL (Tren-Trai)", "FR (Tren-Phai 360)", "RL (Duoi-Trai)", "RR (Duoi-Phai)"};
 const int NUM_SERVOS = 4;
 int currentAngles[NUM_SERVOS] = {90, 90, 90, 90};
 
