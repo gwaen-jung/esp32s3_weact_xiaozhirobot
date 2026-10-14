@@ -1,0 +1,2576 @@
+From 06038fe0140b047922c7d99720e21c77be622cac Mon Sep 17 00:00:00 2001
+From: Truong Huy Hoa <huyhoa308@gmail.com>
+Date: Wed, 14 Oct 2026 23:09:46 +0700
+Subject: [PATCH 3/3] feat(dog): real pins, no servos, richer eyes, ToF listen,
+ "Chao Nhi" wake word
+
+- Pins match the verified hardware: one full-duplex I2S bus (BCLK 16, WS 17,
+  mic DIN 14, PCM5100A DOUT 15) at 16 kHz, mono sent to both DAC slots.
+- Servo legs removed (pins 7/4/6/5 held LOW).
+- Wi-Fi: power save forced off, Wi-Fi/LWIP buffers in PSRAM and enlarged.
+- Eyes: 24 presets, per-mood colour fade, overlays (hearts, tears, blush,
+  anger mark, Zzz, ?, !, sparkles, sunglasses, notes, tongue), speaking bob,
+  assistant/user text subtitles, idle fidgets and sleepy mode.
+- VL53L0X ToF driver (I2C 8/9, XSHUT 21): hand close -> start listening,
+  adaptive threshold, stall watchdog.
+- Custom MultiNet wake word "chao ni" (Chao Nhi).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ main/boards/esp32s3-weact-dog/README.md       |  99 ++--
+ main/boards/esp32s3-weact-dog/board_pins.h    |  47 +-
+ main/boards/esp32s3-weact-dog/config.h        |  17 +-
+ main/boards/esp32s3-weact-dog/config.json     |  19 +-
+ main/boards/esp32s3-weact-dog/dog_behavior.cc | 161 +++---
+ main/boards/esp32s3-weact-dog/dog_behavior.h  |  18 +-
+ main/boards/esp32s3-weact-dog/dog_config.h    | 101 ++--
+ main/boards/esp32s3-weact-dog/eyes_display.cc | 478 ++++++++++++++++--
+ main/boards/esp32s3-weact-dog/eyes_display.h  |  96 +++-
+ main/boards/esp32s3-weact-dog/leg_servos.cc   | 262 ----------
+ main/boards/esp32s3-weact-dog/leg_servos.h    |  78 ---
+ main/boards/esp32s3-weact-dog/tof_sensor.cc   | 405 +++++++++++++++
+ main/boards/esp32s3-weact-dog/tof_sensor.h    |  55 ++
+ .../esp32s3-weact-dog/weact_dog_board.cc      | 130 ++++-
+ 14 files changed, 1357 insertions(+), 609 deletions(-)
+ delete mode 100644 main/boards/esp32s3-weact-dog/leg_servos.cc
+ delete mode 100644 main/boards/esp32s3-weact-dog/leg_servos.h
+ create mode 100644 main/boards/esp32s3-weact-dog/tof_sensor.cc
+ create mode 100644 main/boards/esp32s3-weact-dog/tof_sensor.h
+
+diff --git a/main/boards/esp32s3-weact-dog/README.md b/main/boards/esp32s3-weact-dog/README.md
+index c702da1..637485f 100644
+--- a/main/boards/esp32s3-weact-dog/README.md
++++ b/main/boards/esp32s3-weact-dog/README.md
+@@ -1,7 +1,7 @@
+ # esp32s3-weact-dog: XIAOZHI desk dog robot
+ 
+ WeAct ESP32-S3 CoreBoard N16R8 + ILI9341 2.4" TFT (animated RoboEyes) + INMP441 mic
+-+ I2S amp + 4 hobby servos as symbolic legs. Chats through the Xiaozhi cloud.
+++ PCM5100A I2S DAC. Chats through the Xiaozhi cloud. Servo legs are disabled.
+ 
+ ## Wiring
+ 
+@@ -9,31 +9,21 @@ WeAct ESP32-S3 CoreBoard N16R8 + ILI9341 2.4" TFT (animated RoboEyes) + INMP441
+ |---|---|---|
+ | TFT SCLK | 40 | SCK |
+ | TFT MOSI | 41 | SDI (MOSI) |
+-| TFT MISO | 42 (optional, unused) | SDO (MISO) |
+ | TFT CS | 39 | CS |
+ | TFT DC | 38 | DC / RS |
+ | TFT RST | 47 | RESET |
+-| TFT LED | 3.3 V | LED |
+-| TFT VCC / GND | 3.3 V / GND | |
+-| Mic WS | 4 | INMP441 WS |
+-| Mic SCK | 5 | INMP441 SCK |
+-| Mic SD | 6 | INMP441 SD |
+-| Mic L/R, GND, VDD | GND, GND, 3.3 V | |
+-| Amp BCLK | 15 | BCLK |
+-| Amp LRC | 16 | LRC / WS |
+-| Amp DIN | 17 | DIN |
+-| Amp SD (enable) | 18 | SD / EN |
+-| Amp VIN | 5 V (boost) | |
+-| Servo front-left | 9 | signal |
+-| Servo front-right | 10 | signal |
+-| Servo rear-left | 11 | signal |
+-| Servo rear-right | 12 | signal |
+-| Servo V+ / GND | 5 V (boost) / GND (common with ESP32) | |
+-| Push-to-talk | 0 | BOOT button on the board |
++| TFT LED, VCC / GND | 3.3 V / GND | |
++| I2S BCLK (shared) | 16 | INMP441 SCK + PCM5100A BCK |
++| I2S WS (shared) | 17 | INMP441 WS + PCM5100A LCK |
++| Mic data in | 14 | INMP441 SD (L/R -> GND) |
++| DAC data out | 15 | PCM5100A DIN (SCK/MC -> GND, XSMT -> 3.3 V) |
++| Servo FL / FR / RL / RR | 7 / 4 / 6 / 5 | **disabled**, held LOW |
++| Push-to-talk | 0 | BOOT button |
+ | Status LED | 48 | onboard WS2812 |
+-| Reserved | 7 SDA / 8 SCL (ToF, IMU), 19/20 (USB) | not used yet |
++| Reserved | 8 SDA / 9 SCL / 21 XSHUT (ToF, IMU), 1 (wake button) | not used yet |
+ 
+-All pins are defined only in `board_pins.h`.
++All pins are defined only in `board_pins.h`. Mic and DAC share one full-duplex
++I2S port at 16 kHz, 32-bit slots.
+ 
+ ## Build (ESP-IDF v6.0.1 or newer)
+ 
+@@ -69,39 +59,48 @@ compiled into the firmware.
+ | What | Where |
+ |---|---|
+ | Pins | `board_pins.h` |
+-| Panel orientation, colour order, SPI speed, audio rates, default volume | `config.h` |
+-| Eye colours, sizes, fps; servo trims, directions, range, speed, safety limits | `dog_config.h` |
+-| State/emotion -> eyes + legs | tables at the top of `dog_behavior.cc` |
+-| Leg poses and motions | keyframe tables at the top of `leg_servos.cc` |
++| Panel orientation, colour order, SPI speed, audio rate, default volume | `config.h` |
++| Eye colours per mood, sizes, fps, overlay colours, idle timings | `dog_config.h` |
++| State/emotion -> eyes | tables at the top of `dog_behavior.cc` |
++| Wi-Fi buffers (PSRAM) | `config.json` `sdkconfig_append` |
+ 
+-Volume can also be changed by voice ("turn the volume down"). Things to check on the
+-real hardware are listed in `docs/HARDWARE_TODO.md`.
++Volume can also be changed by voice ("giam am luong").
+ 
+ ## Behaviour
+ 
+-| Trigger | Eyes | Legs |
+-|---|---|---|
+-| Boot | open from closed | (servos attach one by one once Wi-Fi + audio are up) then stand |
+-| Idle | default, blink, drift | stand; sit after 60 s, then PWM off |
+-| Listening | wide, centred, curious | stand |
+-| Thinking (your words received) | look up-left | |
+-| Speaking | keep emotion, centred | soft wiggle every 3.5 s |
+-| happy / funny / loving / delicious | happy | wiggle |
+-| laughing | happy + laugh | wave |
+-| sad / crying | droopy | crouch |
+-| embarrassed | droopy | |
+-| angry | angry | |
+-| surprised / shocked | wide + curious 1.5 s | quick stand |
+-| confused / thinking | confused shake | |
+-| sleepy / relaxed | droopy, slow blink | |
+-| Wi-Fi setup / errors | sweat | |
+-| anything else | default | |
+-
+-## Power safety (servos)
+-
+-Max 2 servos moving at once, start-ups 80 ms apart, 90 deg/s ramps, logical range
+-45..135 deg, PWM cut after a pose is held 1 s. The reset reason is logged at every
+-boot; `BROWNOUT` points to the battery/boost converter.
++| Trigger | Eyes |
++|---|---|
++| Boot | open from closed |
++| Idle | cyan, blink, drift; random look-around / wink / smile every 12-25 s; sleepy + Zzz after 3 min |
++| Listening | wide, centred, curious |
++| Thinking (your words received) / connecting | look up-left, light blue, "?" |
++| Speaking | keeps the emotion, gentle bob; reply text shown as subtitle |
++| happy | yellow, sparkles |
++| laughing / funny | yellow, laugh shake, music notes |
++| loving | pink, floating hearts, blush |
++| kissy | wink + hearts + blush |
++| delicious | happy + tongue |
++| sad | blue, droopy, looks down |
++| crying | blue, droopy, falling tears |
++| embarrassed | pink, looks away, blush + sweat |
++| angry | red, angry lids, anger mark |
++| surprised | white, wide, "!" |
++| shocked | white, wide, shake, "!" |
++| confused | violet, shake, "?" |
++| sleepy | grey-blue, droopy, slow blink, Zzz |
++| relaxed | green, half-closed |
++| winking | wink + sparkles |
++| cool / confident | sunglasses with moving glint |
++| silly | orange, wobble, music notes |
++| Wi-Fi setup / errors | orange, sweat |
++
++## Wi-Fi stability
++
++- Radio power save is forced off (`SetPowerSaveLevel` -> PERFORMANCE): no modem sleep,
++  lower latency, fewer router-side disconnects.
++- Wi-Fi/LWIP buffers moved to PSRAM and enlarged (more RX/TX buffers, bigger BA window
++  and TCP window) so the voice stream does not stall on packet bursts.
++- Servos removed: no more current spikes / brownouts that used to drop Wi-Fi.
+ 
+ ## License
+ 
+diff --git a/main/boards/esp32s3-weact-dog/board_pins.h b/main/boards/esp32s3-weact-dog/board_pins.h
+index 82d172d..efc7f46 100644
+--- a/main/boards/esp32s3-weact-dog/board_pins.h
++++ b/main/boards/esp32s3-weact-dog/board_pins.h
+@@ -1,5 +1,7 @@
+ // Single source of truth for every GPIO used (or reserved) by the
+ // XIAOZHI dog robot on a WeAct ESP32-S3 CoreBoard N16R8.
++// Values match the hardware verified with the Arduino test suite
++// (esp32s3_weact_xiaozhirobot/platformio.ini, 2026-10-12).
+ #pragma once
+ 
+ #include <driver/gpio.h>
+@@ -9,35 +11,38 @@
+ #define PIN_TFT_CS    GPIO_NUM_39
+ #define PIN_TFT_SCLK  GPIO_NUM_40
+ #define PIN_TFT_MOSI  GPIO_NUM_41
+-#define PIN_TFT_MISO  GPIO_NUM_NC  // GPIO42 is wired but unused (write-only panel)
++#define PIN_TFT_MISO  GPIO_NUM_NC  // write-only panel
+ #define PIN_TFT_RST   GPIO_NUM_47
+-// TODO(hw-verify): backlight is tied to 3.3V. Set a GPIO here to get PWM dimming.
+-#define PIN_TFT_BL    GPIO_NUM_NC
++#define PIN_TFT_BL    GPIO_NUM_NC  // backlight tied to 3.3V
+ 
+-// ---- Microphone INMP441 (I2S RX, L/R -> GND = left slot) -------------------
+-#define PIN_MIC_WS    GPIO_NUM_4
+-#define PIN_MIC_SCK   GPIO_NUM_5
+-#define PIN_MIC_SD    GPIO_NUM_6
++// ---- Audio: one full-duplex I2S bus -----------------------------------------
++// INMP441 (mic, L/R -> GND = left slot) and PCM5100A (DAC, MC -> GND = internal
++// PLL, XSMT -> 3.3V = always unmuted) share BCLK and WS.
++#define PIN_I2S_BCLK  GPIO_NUM_16
++#define PIN_I2S_WS    GPIO_NUM_17
++#define PIN_I2S_DIN   GPIO_NUM_14  // INMP441 SD  -> ESP32
++#define PIN_I2S_DOUT  GPIO_NUM_15  // ESP32 -> PCM5100A DIN
+ 
+-// ---- Amplifier, WeAct I2S dual-speaker amp (I2S TX) ------------------------
+-// TODO(hw-verify): pinout assumed MAX98357A-style (BCLK, LRC, DIN, SD).
+-#define PIN_AMP_BCLK  GPIO_NUM_15
+-#define PIN_AMP_LRC   GPIO_NUM_16
+-#define PIN_AMP_DIN   GPIO_NUM_17
+-// TODO(hw-verify): SD/enable pin. High = enabled on MAX98357A. NC to disable.
+-#define PIN_AMP_SD    GPIO_NUM_18
++// ---- Servo legs: DISABLED ---------------------------------------------------
++// The legs are not driven by this firmware. The signal pins are held LOW at
++// boot so the servos get no pulses and stay limp and quiet.
++#define PIN_SERVO_FL  GPIO_NUM_7
++#define PIN_SERVO_FR  GPIO_NUM_4
++#define PIN_SERVO_RL  GPIO_NUM_6
++#define PIN_SERVO_RR  GPIO_NUM_5
+ 
+-// ---- Servo legs ------------------------------------------------------------
+-#define PIN_SERVO_FL  GPIO_NUM_9
+-#define PIN_SERVO_FR  GPIO_NUM_10
+-#define PIN_SERVO_RL  GPIO_NUM_11
+-#define PIN_SERVO_RR  GPIO_NUM_12
++// ---- I2C sensors -----------------------------------------------------------
++// VL53L0X ToF at 0x29 (hand < 5 cm -> start listening). MPU6050 (0x68) shares
++// the bus but is not used yet.
++#define PIN_I2C_SDA   GPIO_NUM_8
++#define PIN_I2C_SCL   GPIO_NUM_9
++#define PIN_TOF_XSHUT GPIO_NUM_21
+ 
+ // ---- UI --------------------------------------------------------------------
+ #define PIN_BUTTON_TALK GPIO_NUM_0   // BOOT button, input only
+ #define PIN_STATUS_LED  GPIO_NUM_48  // onboard WS2812
+ 
+ // ---- Reserved for later (do not use) ---------------------------------------
+-// I2C SDA 7 / SCL 8      : VL53L0X ToF, MPU6050
+-// USB D- 19 / D+ 20      : camera / native USB
++// GPIO 1                        : wake button
++// USB D- 19 / D+ 20               : native USB
+ // Never use: 0 as output, 3/45/46 (strapping), 26..32 (flash), 35..37 (OPI PSRAM)
+diff --git a/main/boards/esp32s3-weact-dog/config.h b/main/boards/esp32s3-weact-dog/config.h
+index 8caf92e..b0f1c15 100644
+--- a/main/boards/esp32s3-weact-dog/config.h
++++ b/main/boards/esp32s3-weact-dog/config.h
+@@ -3,24 +3,23 @@
+ 
+ #include "board_pins.h"
+ 
+-// Audio: INMP441 at 16 kHz in, server TTS is 24 kHz Opus out.
++// Audio: mic and DAC share one I2S bus (same clock), so both run at 16 kHz.
++// 16 kHz is what the AFE / wake word wants (no input resampler, less CPU) and
++// the Opus decoder outputs 16 kHz directly.
+ #define AUDIO_INPUT_SAMPLE_RATE  16000
+-#define AUDIO_OUTPUT_SAMPLE_RATE 24000
+-// Conservative default for small 4 ohm speakers (0..100, changeable by voice).
+-#define AUDIO_DEFAULT_OUTPUT_VOLUME 60
+-// TODO(hw-verify): 1 = drive both I2S slots (dual speaker amp), 0 = left only.
+-#define AUDIO_SPK_STEREO_DUP 1
++#define AUDIO_OUTPUT_SAMPLE_RATE 16000
++// Default volume (0..100, changeable by voice; the NVS value wins once set).
++#define AUDIO_DEFAULT_OUTPUT_VOLUME 70
+ 
+ #define BOOT_BUTTON_GPIO PIN_BUTTON_TALK
+ #define BUILTIN_LED_GPIO PIN_STATUS_LED
+ 
+-// Display: ILI9341 in landscape.
++// Display: ILI9341 in landscape (same as Adafruit rotation 1, verified).
+ #define DISPLAY_WIDTH    320
+ #define DISPLAY_HEIGHT   240
+ #define DISPLAY_SPI_HOST SPI2_HOST
+-#define DISPLAY_SPI_HZ   (40 * 1000 * 1000)  // drop to 26/20 MHz if unstable
++#define DISPLAY_SPI_HZ   (26 * 1000 * 1000)  // Arduino test was stable at 27 MHz
+ #define DISPLAY_SPI_MODE 0
+-// TODO(hw-verify): orientation / colour order / inversion for this module.
+ #define DISPLAY_SWAP_XY      true
+ #define DISPLAY_MIRROR_X     false  // swap+no mirror = Adafruit rotation 1 (MADCTL 0x28)
+ #define DISPLAY_MIRROR_Y     false  // set both true for rotation 3 (upside down)
+diff --git a/main/boards/esp32s3-weact-dog/config.json b/main/boards/esp32s3-weact-dog/config.json
+index 4774867..1d61f98 100644
+--- a/main/boards/esp32s3-weact-dog/config.json
++++ b/main/boards/esp32s3-weact-dog/config.json
+@@ -4,7 +4,24 @@
+     "builds": [
+         {
+             "name": "esp32s3-weact-dog",
+-            "sdkconfig_append": []
++            "sdkconfig_append": [
++                "CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y",
++                "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=8",
++                "CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=24",
++                "CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=32",
++                "CONFIG_ESP_WIFI_RX_BA_WIN=8",
++                "CONFIG_LWIP_TCPIP_RECVMBOX_SIZE=32",
++                "CONFIG_LWIP_TCP_SND_BUF_DEFAULT=11520",
++                "CONFIG_LWIP_TCP_WND_DEFAULT=11520",
++                "CONFIG_ESP_PHY_CALIBRATION_AND_DATA_STORAGE=y",
++                "CONFIG_USE_AFE_WAKE_WORD=n",
++                "CONFIG_USE_CUSTOM_WAKE_WORD=y",
++                "CONFIG_CUSTOM_WAKE_WORD=\"chao ni\"",
++                "CONFIG_CUSTOM_WAKE_WORD_DISPLAY=\"Chào Nhi\"",
++                "CONFIG_CUSTOM_WAKE_WORD_THRESHOLD=20",
++                "CONFIG_SR_MN_CN_NONE=n",
++                "CONFIG_SR_MN_CN_MULTINET7_QUANT=y"
++            ]
+         }
+     ]
+ }
+diff --git a/main/boards/esp32s3-weact-dog/dog_behavior.cc b/main/boards/esp32s3-weact-dog/dog_behavior.cc
+index 9471c26..c781ea4 100644
+--- a/main/boards/esp32s3-weact-dog/dog_behavior.cc
++++ b/main/boards/esp32s3-weact-dog/dog_behavior.cc
+@@ -1,82 +1,89 @@
+ #include "dog_behavior.h"
+ 
+ #include <esp_log.h>
++#include <esp_random.h>
+ #include <esp_timer.h>
+ 
+ #include <cstring>
+ 
+ #include "application.h"
++#include "dog_config.h"
+ 
+ #define TAG "DogBehavior"
+ 
+ // ============================================================================
+-// THE mapping table: server emotion -> eyes + legs.
+-// Unknown strings fall back to kNeutral / no motion (never crash).
++// THE mapping table: server emotion -> eyes.
++// Unknown strings fall back to kNeutral (never crash).
+ // ============================================================================
+ namespace {
+ struct EmotionRule {
+     const char* emotion;
+     EyePreset eyes;
+-    LegMotion legs;
+ };
+ 
+ const EmotionRule kEmotionTable[] = {
+     // server emotions (xiaozhi LLM emoji set)
+-    {"happy", EyePreset::kHappy, LegMotion::kWiggle},
+-    {"laughing", EyePreset::kLaugh, LegMotion::kWave},
+-    {"funny", EyePreset::kHappy, LegMotion::kWiggle},
+-    {"loving", EyePreset::kHappy, LegMotion::kWiggle},
+-    {"delicious", EyePreset::kHappy, LegMotion::kWiggle},
+-    {"sad", EyePreset::kSad, LegMotion::kCrouch},
+-    {"crying", EyePreset::kSad, LegMotion::kCrouch},
+-    {"embarrassed", EyePreset::kSad, LegMotion::kNone},
+-    {"angry", EyePreset::kAngry, LegMotion::kNone},
+-    {"surprised", EyePreset::kSurprised, LegMotion::kQuickStand},
+-    {"shocked", EyePreset::kSurprised, LegMotion::kQuickStand},
+-    {"confused", EyePreset::kConfused, LegMotion::kNone},
+-    {"thinking", EyePreset::kConfused, LegMotion::kNone},
+-    {"sleepy", EyePreset::kSleepy, LegMotion::kNone},
+-    {"relaxed", EyePreset::kSleepy, LegMotion::kNone},
+-    // Not in the brief, mild positive faces: happy eyes, no legs (deviation, see PLAN.md)
+-    {"winking", EyePreset::kHappy, LegMotion::kNone},
+-    {"cool", EyePreset::kHappy, LegMotion::kNone},
+-    {"confident", EyePreset::kHappy, LegMotion::kNone},
+-    {"kissy", EyePreset::kHappy, LegMotion::kNone},
+-    {"silly", EyePreset::kHappy, LegMotion::kNone},
++    {"happy", EyePreset::kHappy},
++    {"laughing", EyePreset::kLaugh},
++    {"funny", EyePreset::kLaugh},
++    {"loving", EyePreset::kLove},
++    {"kissy", EyePreset::kKiss},
++    {"delicious", EyePreset::kDelicious},
++    {"sad", EyePreset::kSad},
++    {"crying", EyePreset::kCry},
++    {"embarrassed", EyePreset::kEmbarrassed},
++    {"angry", EyePreset::kAngry},
++    {"surprised", EyePreset::kSurprised},
++    {"shocked", EyePreset::kShocked},
++    {"confused", EyePreset::kConfused},
++    {"thinking", EyePreset::kThinking},
++    {"sleepy", EyePreset::kSleepy},
++    {"relaxed", EyePreset::kRelaxed},
++    {"winking", EyePreset::kWink},
++    {"cool", EyePreset::kCool},
++    {"confident", EyePreset::kCool},
++    {"silly", EyePreset::kSilly},
+     // device-side emotions sent by the firmware core
+-    {"robot_2", EyePreset::kBoot, LegMotion::kNone},
+-    {"warning", EyePreset::kError, LegMotion::kNone},
+-    {"cloud_off", EyePreset::kError, LegMotion::kNone},
+-    {"cancel", EyePreset::kError, LegMotion::kNone},
+-    {"gear", EyePreset::kError, LegMotion::kNone},  // Wi-Fi provisioning
+-    {"link", EyePreset::kNeutral, LegMotion::kNone},  // activation code shown
++    {"robot_2", EyePreset::kBoot},
++    {"warning", EyePreset::kError},
++    {"cloud_off", EyePreset::kError},
++    {"cancel", EyePreset::kError},
++    {"gear", EyePreset::kError},          // Wi-Fi provisioning
++    {"link", EyePreset::kNeutral},        // activation code shown
++    {"download", EyePreset::kThinking},   // OTA
++    {"cloud_download", EyePreset::kThinking},
+ };
+ 
+ // ============================================================================
+-// Device state -> eyes + legs
++// Device state -> eyes
+ // ============================================================================
+ struct StateRule {
+     DeviceState state;
+     EyePreset eyes;
+-    LegMotion legs;
+ };
+ 
+ const StateRule kStateTable[] = {
+-    {kDeviceStateStarting, EyePreset::kBoot, LegMotion::kNone},
+-    {kDeviceStateIdle, EyePreset::kIdle, LegMotion::kStand},
+-    {kDeviceStateConnecting, EyePreset::kNeutral, LegMotion::kNone},
+-    {kDeviceStateListening, EyePreset::kListening, LegMotion::kStand},
+-    {kDeviceStateSpeaking, EyePreset::kSpeaking, LegMotion::kSoftWiggle},
+-    {kDeviceStateWifiConfiguring, EyePreset::kError, LegMotion::kNone},
+-    {kDeviceStateFatalError, EyePreset::kError, LegMotion::kRelax},
++    {kDeviceStateStarting, EyePreset::kBoot},
++    {kDeviceStateIdle, EyePreset::kIdle},
++    {kDeviceStateConnecting, EyePreset::kThinking},
++    {kDeviceStateListening, EyePreset::kListening},
++    {kDeviceStateSpeaking, EyePreset::kSpeaking},
++    {kDeviceStateWifiConfiguring, EyePreset::kError},
++    {kDeviceStateActivating, EyePreset::kNeutral},
++    {kDeviceStateUpgrading, EyePreset::kThinking},
++    {kDeviceStateFatalError, EyePreset::kError},
+ };
+ // "Thinking" is not an upstream state: Listening + user text received.
+ constexpr EyePreset kThinkingEyes = EyePreset::kThinking;
+ 
++// Short random expressions while idle so the robot looks alive.
++enum class Fidget : uint8_t { kLookLeft, kLookRight, kLookUp, kBlink, kWink, kHappy, kCurious };
++
+ int64_t now_ms() { return esp_timer_get_time() / 1000; }
++int64_t rand_between(int64_t lo, int64_t hi) { return lo + (int64_t)(esp_random() % (uint32_t)(hi - lo + 1)); }
+ }  // namespace
+ 
+-DogBehavior::DogBehavior(EyesDisplay* eyes, LegServos* legs) : eyes_(eyes), legs_(legs) {
++DogBehavior::DogBehavior(EyesDisplay* eyes) : eyes_(eyes) {
+     events_ = xQueueCreate(8, sizeof(Event));
+ }
+ 
+@@ -103,25 +110,34 @@ void DogBehavior::OnChat(const char* role, const char* content) {
+ 
+ void DogBehavior::TaskEntry(void* arg) { static_cast<DogBehavior*>(arg)->Loop(); }
+ 
++void DogBehavior::ScheduleFidget(int64_t now) {
++    next_fidget_ms_ = now + rand_between(DOG_IDLE_FIDGET_MIN_MS, DOG_IDLE_FIDGET_MAX_MS);
++}
++
+ void DogBehavior::HandleState(DeviceState state, int64_t now) {
+     ESP_LOGI(TAG, "state %d -> %d", (int)state_, (int)state);
++    DeviceState prev = state_;
+     state_ = state;
+     state_since_ms_ = now;
+     thinking_ = false;
++    sleepy_ = false;
+     surprise_until_ms_ = 0;
++    fidget_end_ms_ = 0;
++    ScheduleFidget(now);
+ 
+-    // Servos are powered only once Wi-Fi and audio are up (first Idle).
+-    if (state == kDeviceStateIdle && !servos_started_) {
+-        servos_started_ = true;
+-        legs_->AttachSequential();
++    eyes_->SetSpeaking(state == kDeviceStateSpeaking);
++
++    // After a conversation, keep the last emotion on screen for a moment
++    // instead of snapping straight back to the idle look.
++    if (state == kDeviceStateIdle && prev == kDeviceStateSpeaking && emotion_active_) {
++        emotion_since_ms_ = now;
++        return;
+     }
++    if (state != kDeviceStateSpeaking) emotion_active_ = false;
+ 
+     for (const auto& r : kStateTable) {
+         if (r.state != state) continue;
+         eyes_->ApplyPreset(r.eyes);
+-        if (r.legs == LegMotion::kStand && sat_down_) sat_down_ = false;
+-        legs_->Play(r.legs);
+-        if (r.legs == LegMotion::kSoftWiggle) last_wiggle_ms_ = now;
+         return;
+     }
+ }
+@@ -130,21 +146,39 @@ void DogBehavior::HandleEmotion(const char* emotion, int64_t now) {
+     if (strcmp(emotion, "neutral") == 0 || emotion[0] == 0) {
+         // The core sends "neutral" on every idle/listening/connecting change;
+         // the state table owns those looks. Only reset the mood while speaking.
+-        if (state_ == kDeviceStateSpeaking) eyes_->ApplyPreset(EyePreset::kNeutral);
++        if (state_ == kDeviceStateSpeaking) {
++            eyes_->ApplyPreset(EyePreset::kNeutral);
++            emotion_active_ = false;
++        }
+         return;
+     }
+     for (const auto& r : kEmotionTable) {
+         if (strcmp(r.emotion, emotion) != 0) continue;
+         eyes_->ApplyPreset(r.eyes);
+         if (r.eyes == EyePreset::kSurprised) surprise_until_ms_ = now + DOG_SURPRISE_MS;
+-        legs_->Play(r.legs);
+-        if (r.legs != LegMotion::kNone) last_wiggle_ms_ = now;  // don't overlap a soft wiggle
++        emotion_active_ = true;
++        emotion_since_ms_ = now;
+         return;
+     }
+     ESP_LOGW(TAG, "unknown emotion '%s' -> neutral", emotion);
+     eyes_->ApplyPreset(EyePreset::kNeutral);
+ }
+ 
++void DogBehavior::IdleFidget(int64_t now) {
++    auto f = (Fidget)(esp_random() % 7);
++    switch (f) {
++        case Fidget::kLookLeft: eyes_->LookAt(roboeyes::W); break;
++        case Fidget::kLookRight: eyes_->LookAt(roboeyes::E); break;
++        case Fidget::kLookUp: eyes_->LookAt(roboeyes::N); break;
++        case Fidget::kBlink: eyes_->Blink(); break;
++        case Fidget::kWink: eyes_->Wink(); break;
++        case Fidget::kHappy: eyes_->ApplyPreset(EyePreset::kHappy); break;
++        case Fidget::kCurious: eyes_->ApplyPreset(EyePreset::kSurprised); break;
++    }
++    fidget_end_ms_ = now + 1800;
++    ScheduleFidget(now);
++}
++
+ void DogBehavior::Loop() {
+     // Let Board/Application construction finish before touching the singleton.
+     vTaskDelay(pdMS_TO_TICKS(500));
+@@ -170,15 +204,24 @@ void DogBehavior::Loop() {
+             surprise_until_ms_ = 0;
+             eyes_->SetCuriosity(false);
+         }
+-        if (state_ == kDeviceStateSpeaking && !legs_->busy() &&
+-            now - last_wiggle_ms_ > DOG_SPEAK_WIGGLE_EVERY_MS) {
+-            last_wiggle_ms_ = now;
+-            legs_->Play(LegMotion::kSoftWiggle);
+-        }
+-        if (state_ == kDeviceStateIdle && !sat_down_ && legs_->attached() &&
+-            now - state_since_ms_ > DOG_IDLE_SIT_AFTER_MS) {
+-            sat_down_ = true;
+-            legs_->Play(LegMotion::kSit);  // PWM is cut automatically after the hold
++
++        if (state_ == kDeviceStateIdle) {
++            if (emotion_active_ && now - emotion_since_ms_ > DOG_EMOTION_HOLD_MS / 2) {
++                emotion_active_ = false;  // post-chat emotion has been shown long enough
++                eyes_->ApplyPreset(EyePreset::kIdle);
++                ScheduleFidget(now);
++            } else if (!emotion_active_) {
++                if (fidget_end_ms_ != 0 && now > fidget_end_ms_) {
++                    fidget_end_ms_ = 0;
++                    eyes_->ApplyPreset(sleepy_ ? EyePreset::kSleepy : EyePreset::kIdle);
++                }
++                if (!sleepy_ && now - state_since_ms_ > DOG_IDLE_SLEEPY_AFTER_MS) {
++                    sleepy_ = true;
++                    eyes_->ApplyPreset(EyePreset::kSleepy);
++                } else if (!sleepy_ && fidget_end_ms_ == 0 && now > next_fidget_ms_) {
++                    IdleFidget(now);
++                }
++            }
+         }
+         vTaskDelayUntil(&last, pdMS_TO_TICKS(DOG_POLL_MS));
+     }
+diff --git a/main/boards/esp32s3-weact-dog/dog_behavior.h b/main/boards/esp32s3-weact-dog/dog_behavior.h
+index 4f4c756..b2f1adf 100644
+--- a/main/boards/esp32s3-weact-dog/dog_behavior.h
++++ b/main/boards/esp32s3-weact-dog/dog_behavior.h
+@@ -1,5 +1,5 @@
+-// DogBehavior: maps device state + server emotions to eyes and legs.
+-// All mapping tables live in dog_behavior.cc.
++// DogBehavior: maps device state + server emotions to the eyes.
++// All mapping tables live in dog_behavior.cc. (Servo legs are disabled.)
+ #pragma once
+ 
+ #include <freertos/FreeRTOS.h>
+@@ -8,11 +8,10 @@
+ 
+ #include "device_state.h"
+ #include "eyes_display.h"
+-#include "leg_servos.h"
+ 
+ class DogBehavior {
+ public:
+-    DogBehavior(EyesDisplay* eyes, LegServos* legs);
++    explicit DogBehavior(EyesDisplay* eyes);
+     void Start();
+ 
+     // Called from EyesDisplay hooks (any task). Non-blocking.
+@@ -30,17 +29,20 @@ private:
+     void Loop();
+     void HandleState(DeviceState state, int64_t now);
+     void HandleEmotion(const char* emotion, int64_t now);
++    void IdleFidget(int64_t now);
++    void ScheduleFidget(int64_t now);
+ 
+     EyesDisplay* eyes_;
+-    LegServos* legs_;
+     QueueHandle_t events_ = nullptr;
+     TaskHandle_t task_ = nullptr;
+ 
+     DeviceState state_ = kDeviceStateUnknown;
+-    bool servos_started_ = false;
+     bool thinking_ = false;
+-    bool sat_down_ = false;
++    bool sleepy_ = false;
++    bool emotion_active_ = false;  // a server emotion is showing (fades after a while)
+     int64_t state_since_ms_ = 0;
+-    int64_t last_wiggle_ms_ = 0;
++    int64_t emotion_since_ms_ = 0;
+     int64_t surprise_until_ms_ = 0;
++    int64_t next_fidget_ms_ = 0;
++    int64_t fidget_end_ms_ = 0;
+ };
+diff --git a/main/boards/esp32s3-weact-dog/dog_config.h b/main/boards/esp32s3-weact-dog/dog_config.h
+index e00d172..52ffc30 100644
+--- a/main/boards/esp32s3-weact-dog/dog_config.h
++++ b/main/boards/esp32s3-weact-dog/dog_config.h
+@@ -1,18 +1,44 @@
+-// Tunable constants for the eyes and the servo legs. No magic numbers elsewhere.
++// Tunable constants for the eyes and the behaviour. No magic numbers elsewhere.
++// (Servo legs are disabled in this firmware: no servo constants.)
+ #pragma once
+ 
+ #include <cstdint>
+ 
+-#include "board_pins.h"
+-
+ // ============================================================================
+ // Eyes
+ // ============================================================================
+ // Colours are plain RGB565 (0xRRRR RGGG GGGB BBBB). The canvas swaps bytes itself.
+-#define EYES_COLOR_MAIN       0x07FF  // cyan
++#define EYES_COLOR_MAIN       0x07FF  // cyan (default look)
+ #define EYES_COLOR_BG         0x0000  // black
+ #define EYES_COLOR_TEXT       0xFFFF  // subtitle text (notifications, activation code)
+ 
++// Per-mood eye colours. The eye colour fades smoothly between them.
++#define EYES_COLOR_HAPPY      0xFFE0  // yellow
++#define EYES_COLOR_LOVE       0xFB56  // pink
++#define EYES_COLOR_SAD        0x3B9F  // soft blue
++#define EYES_COLOR_ANGRY      0xF800  // red
++#define EYES_COLOR_SURPRISED  0xFFFF  // white
++#define EYES_COLOR_CONFUSED   0xB41F  // violet
++#define EYES_COLOR_SLEEPY     0x6D7B  // dim blue-grey
++#define EYES_COLOR_COOL       0x07E0  // green
++#define EYES_COLOR_SILLY      0xFD20  // orange
++#define EYES_COLOR_LISTEN     0x07FF  // cyan
++#define EYES_COLOR_THINK      0x867F  // light blue
++#define EYES_COLOR_ERROR      0xFD20  // orange
++
++// Overlay colours (hearts, tears, blush, symbols)
++#define FX_COLOR_HEART        0xF8B2  // red-pink
++#define FX_COLOR_TEAR         0x5D9F  // light blue
++#define FX_COLOR_BLUSH        0xF9F2  // pink
++#define FX_COLOR_ANGER        0xF800  // red
++#define FX_COLOR_ZZZ          0xAD7F  // pale blue
++#define FX_COLOR_SYMBOL       0xFFFF  // "?" "!" text
++#define FX_COLOR_SPARKLE      0xFFF0  // pale yellow
++#define FX_COLOR_GLASSES      0x2104  // almost black (sunglasses)
++#define FX_COLOR_NOTE         0xFFE0  // music note
++
++#define EYES_COLOR_FADE_STEP  24      // 0..256 per frame (24 ~ 10 frames to fade)
++
+ #define EYES_FPS              30      // target frame rate (25..30)
+ #define EYES_TASK_PRIORITY    2       // low: must never starve audio
+ #define EYES_TASK_STACK       4096
+@@ -25,6 +51,8 @@
+ // "Wide open" variant used for listening / surprised
+ #define EYES_WIDE_WIDTH       96
+ #define EYES_WIDE_HEIGHT      104
++// "Squint" variant used for cool / skeptical
++#define EYES_SQUINT_HEIGHT    40
+ 
+ #define EYES_SWEAT_SCALE      3.0f    // sweat drops were sized for 128x64
+ 
+@@ -34,47 +62,32 @@
+ // Bottom subtitle strip (ASCII + Vietnamese 8x16 font, scaled)
+ #define EYES_TEXT_SCALE       2
+ #define EYES_TEXT_MAX_LINES   2
++// How long an assistant sentence stays on screen
++#define EYES_CHAT_TEXT_MS     6000
+ 
+ // ============================================================================
+-// Servo legs
++// Behaviour
+ // ============================================================================
+-enum LegId : uint8_t { LEG_FL = 0, LEG_FR = 1, LEG_RL = 2, LEG_RR = 3, LEG_COUNT = 4 };
+-
+-struct LegConfig {
+-    gpio_num_t gpio;
+-    int8_t trim_deg;  // added to the logical angle
+-    bool invert;      // mirror around 90 deg (for the right-hand side usually)
+-};
++#define DOG_SURPRISE_MS          1500   // how long "surprised" curiosity lasts
++#define DOG_EMOTION_HOLD_MS      8000   // an emotion fades back to neutral after this (idle)
++#define DOG_IDLE_SLEEPY_AFTER_MS 180000 // idle this long -> sleepy eyes + Zzz
++#define DOG_IDLE_FIDGET_MIN_MS   12000  // random idle micro-expression interval
++#define DOG_IDLE_FIDGET_MAX_MS   25000
++#define DOG_POLL_MS              50     // state polling period
+ 
+-// TODO(hw-verify): trims and directions per leg after assembly.
+-// Logical convention: angle > 90 moves the leg "forward/down" (standing taller).
+-static constexpr LegConfig kLegConfig[LEG_COUNT] = {
+-    {PIN_SERVO_FL, 0, false},
+-    {PIN_SERVO_FR, 0, true},
+-    {PIN_SERVO_RL, 0, false},
+-    {PIN_SERVO_RR, 0, true},
+-};
+-
+-#define SERVO_NEUTRAL_DEG        90
+-#define SERVO_MIN_DEG            45    // hard safety clamp
+-#define SERVO_MAX_DEG            135   // hard safety clamp
+-#define SERVO_PULSE_MIN_US       500   // pulse at 0 deg
+-#define SERVO_PULSE_MAX_US       2400  // pulse at 180 deg
+-#define SERVO_PWM_HZ             50
+-#define SERVO_PWM_BITS           14
+-#define SERVO_LEDC_TIMER         LEDC_TIMER_1    // timer 0 is left for backlight
+-#define SERVO_LEDC_FIRST_CHANNEL LEDC_CHANNEL_2  // channels 2..5
+-
+-#define SERVO_SLEW_DEG_PER_S     90    // ramp speed limit
+-#define SERVO_MAX_MOVING         2     // never more than 2 servos moving at once
+-#define SERVO_STAGGER_MS         80    // delay between two servo start-ups
+-#define SERVO_DETACH_AFTER_MS    1000  // stop PWM when a pose is held this long
+-#define SERVO_TICK_MS            20    // control loop period
+-#define SERVO_INIT_GAP_MS        300   // sequential attach at boot
+-#define SERVO_TASK_PRIORITY      3
+-#define SERVO_TASK_STACK         4096
+-
+-#define DOG_IDLE_SIT_AFTER_MS    60000 // idle this long -> sit, then PWM off
+-#define DOG_SPEAK_WIGGLE_EVERY_MS 3500 // soft wiggle cadence while speaking
+-#define DOG_SURPRISE_MS          1500  // how long "surprised" curiosity lasts
+-#define DOG_POLL_MS              50    // state polling period
++// ============================================================================
++// ToF VL53L0X: hand close -> start listening
++// ============================================================================
++#define TOF_I2C_PORT             I2C_NUM_0
++#define TOF_I2C_HZ               100000
++#define TOF_PERIOD_MS            50     // continuous ranging period
++#define TOF_NEAR_MM              50     // closer than this = "hand in front" (5 cm)
++#define TOF_NEAR_SAMPLES         2      // consecutive near samples before triggering
++#define TOF_NEAR_MAX_MM          70     // adaptive threshold upper clamp
++#define TOF_DROP_MM              12     // trigger when this much closer than the baseline
++                                        // (empty scene reads ~78-83 mm on this robot)
++#define TOF_REARM_MARGIN_MM      8      // must go this far above the threshold to re-arm
++#define TOF_REARM_SAMPLES        3
++#define TOF_STALL_MS             1000   // no sample this long -> reset the sensor
++#define TOF_COOLDOWN_MS          1500   // minimum time between two triggers
++#define TOF_TASK_PRIORITY        2
+diff --git a/main/boards/esp32s3-weact-dog/eyes_display.cc b/main/boards/esp32s3-weact-dog/eyes_display.cc
+index 50fdc06..a08c23c 100644
+--- a/main/boards/esp32s3-weact-dog/eyes_display.cc
++++ b/main/boards/esp32s3-weact-dog/eyes_display.cc
+@@ -4,6 +4,8 @@
+ #include <esp_log.h>
+ #include <esp_timer.h>
+ 
++#include <algorithm>
++#include <cmath>
+ #include <cstring>
+ #include <vector>
+ 
+@@ -13,6 +15,46 @@
+ 
+ using namespace roboeyes;
+ 
++namespace {
++int64_t now_ms() { return esp_timer_get_time() / 1000; }
++
++// Linear blend of two RGB565 colours, t in 0..256.
++uint16_t blend565(uint16_t a, uint16_t b, int t) {
++    int ar = a >> 11, ag = (a >> 5) & 0x3F, ab = a & 0x1F;
++    int br = b >> 11, bg = (b >> 5) & 0x3F, bb = b & 0x1F;
++    int r = ar + ((br - ar) * t) / 256;
++    int g = ag + ((bg - ag) * t) / 256;
++    int bl = ab + ((bb - ab) * t) / 256;
++    return (uint16_t)((r << 11) | (g << 5) | bl);
++}
++
++// Move each channel of `cur` at least one step towards `target`.
++uint16_t fade565(uint16_t cur, uint16_t target, int step) {
++    if (cur == target) return cur;
++    uint16_t next = blend565(cur, target, step);
++    if (next == cur) {  // integer blend stalled: nudge channels by 1
++        int cr = cur >> 11, cg = (cur >> 5) & 0x3F, cb = cur & 0x1F;
++        int tr = target >> 11, tg = (target >> 5) & 0x3F, tb = target & 0x1F;
++        cr += (tr > cr) - (tr < cr);
++        cg += (tg > cg) - (tg < cg);
++        cb += (tb > cb) - (tb < cb);
++        next = (uint16_t)((cr << 11) | (cg << 5) | cb);
++    }
++    return next;
++}
++
++// Triangle wave 0..1..0 over `period_ms`, shifted by `phase_ms`.
++float tri(int64_t t, int period_ms, int phase_ms = 0) {
++    float p = (float)((t + phase_ms) % period_ms) / (float)period_ms;
++    return p < 0.5f ? p * 2.0f : (1.0f - p) * 2.0f;
++}
++
++// Saw wave 0..1 over `period_ms`.
++float saw(int64_t t, int period_ms, int phase_ms = 0) {
++    return (float)((t + phase_ms) % period_ms) / (float)period_ms;
++}
++}  // namespace
++
+ EyesDisplay::EyesDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
+                          int width, int height)
+     : panel_io_(panel_io), panel_(panel), canvas_(width, height), eyes_(canvas_) {
+@@ -40,8 +82,9 @@ EyesDisplay::EyesDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handl
+     canvas_.fillScreen(EYES_COLOR_BG);
+ 
+     // RoboEyes setup sized for 320x240 (constants in dog_config.h)
++    current_color_ = target_color_ = EYES_COLOR_MAIN;
+     eyes_.begin(width, height, EYES_FPS);
+-    eyes_.setDisplayColors(EYES_COLOR_BG, EYES_COLOR_MAIN);
++    eyes_.setDisplayColors(EYES_COLOR_BG, current_color_);
+     SetEyeSize(EYES_WIDTH, EYES_HEIGHT);
+     eyes_.setBorderradius(EYES_RADIUS, EYES_RADIUS);
+     eyes_.setSpacebetween(EYES_SPACE);
+@@ -90,12 +133,20 @@ void EyesDisplay::SetStatus(const char* status) {
+     ESP_LOGI(TAG, "status: %s", status ? status : "");
+ }
+ 
++void EyesDisplay::SetSubtitle(const char* text, uint16_t color, int duration_ms) {
++    DisplayLockGuard lock(this);
++    subtitle_ = text ? text : "";
++    subtitle_color_ = color;
++    subtitle_until_us_ = duration_ms > 0 ? esp_timer_get_time() + (int64_t)duration_ms * 1000 : 0;
++    subtitle_dirty_ = true;
++}
++
+ void EyesDisplay::ShowNotification(const char* notification, int duration_ms) {
+     if (notification == nullptr) return;
+     ESP_LOGI(TAG, "notify: %s", notification);
+     DisplayLockGuard lock(this);
+-    subtitle_ = notification;
+-    subtitle_until_us_ = esp_timer_get_time() + (int64_t)duration_ms * 1000;
++    subtitle_sticky_ = false;
++    SetSubtitle(notification, EYES_COLOR_TEXT, duration_ms);
+ }
+ 
+ void EyesDisplay::SetEmotion(const char* emotion) {
+@@ -108,18 +159,28 @@ void EyesDisplay::SetChatMessage(const char* role, const char* content) {
+     if (role == nullptr) return;
+     if (content == nullptr) content = "";
+     if (chat_hook_) chat_hook_(role, content);
+-    // Chat text is dropped on purpose; only "system" messages (activation code,
+-    // Wi-Fi provisioning hint, errors) are shown as a subtitle.
++    DisplayLockGuard lock(this);
+     if (strcmp(role, "system") == 0) {
+-        DisplayLockGuard lock(this);
+-        subtitle_ = content;
+-        subtitle_until_us_ = 0;
++        // Activation code, Wi-Fi provisioning hint, errors: stay until cleared.
++        subtitle_sticky_ = content[0] != 0;
++        SetSubtitle(content, EYES_COLOR_TEXT, 0);
++        return;
++    }
++    if (subtitle_sticky_ || content[0] == 0) return;
++    if (strcmp(role, "assistant") == 0) {
++        SetSubtitle(content, EYES_COLOR_TEXT, EYES_CHAT_TEXT_MS);
++    } else if (strcmp(role, "user") == 0) {
++        SetSubtitle(content, EYES_COLOR_LISTEN, EYES_CHAT_TEXT_MS);
+     }
+ }
+ 
+ void EyesDisplay::ClearChatMessages() {
+     DisplayLockGuard lock(this);
+-    if (subtitle_until_us_ == 0) subtitle_.clear();
++    subtitle_sticky_ = false;
++    if (subtitle_until_us_ == 0) {
++        subtitle_.clear();
++        subtitle_dirty_ = true;
++    }
+ }
+ 
+ // ---------------------------------------------------------------------------
+@@ -140,6 +201,29 @@ void EyesDisplay::SetSweat(bool on) {
+     eyes_.setSweat(on);
+ }
+ 
++void EyesDisplay::SetSpeaking(bool on) {
++    DisplayLockGuard lock(this);
++    speaking_ = on;
++    if (!on) eyes_.setPosition(DEFAULT);
++}
++
++void EyesDisplay::LookAt(unsigned char position) {
++    DisplayLockGuard lock(this);
++    eyes_.setIdleMode(OFF);
++    eyes_.setPosition(position);
++}
++
++void EyesDisplay::Blink() {
++    DisplayLockGuard lock(this);
++    eyes_.blink();
++}
++
++void EyesDisplay::Wink() {
++    DisplayLockGuard lock(this);
++    eyes_.close(false, true);  // right eye
++    wink_until_ms_ = now_ms() + 700;
++}
++
+ void EyesDisplay::ApplyPreset(EyePreset p) {
+     DisplayLockGuard lock(this);
+     // Common reset for "where to look / how big"
+@@ -149,12 +233,19 @@ void EyesDisplay::ApplyPreset(EyePreset p) {
+         eyes_.setHFlicker(OFF);
+         eyes_.setVFlicker(OFF);
+         eyes_.setAutoblinker(ON, 3, 3);
++        eyes_.setSweat(OFF);
++        shake_ = false;
++    };
++    auto set_fx = [this](uint16_t fx) {
++        if (fx != fx_) fx_t0_ms_ = now_ms();
++        fx_ = fx;
+     };
+-    if (p != EyePreset::kError && p != EyePreset::kSpeaking) eyes_.setSweat(OFF);
+ 
+     switch (p) {
+         case EyePreset::kBoot:
+             normal();
++            set_fx(kFxNone);
++            SetTargetColor(EYES_COLOR_MAIN);
+             eyes_.setMood(DEFAULT);
+             eyes_.close();  // start closed, the library opens them smoothly
+             eyes_.open();
+@@ -163,17 +254,23 @@ void EyesDisplay::ApplyPreset(EyePreset p) {
+             break;
+         case EyePreset::kIdle:
+             normal();
++            set_fx(kFxNone);
++            SetTargetColor(EYES_COLOR_MAIN);
+             eyes_.setMood(DEFAULT);
+             eyes_.setIdleMode(ON, 2, 3);
+             break;
+         case EyePreset::kNeutral:
+             normal();
++            set_fx(kFxNone);
++            SetTargetColor(EYES_COLOR_MAIN);
+             eyes_.setMood(DEFAULT);
+             eyes_.setIdleMode(OFF);
+             eyes_.setPosition(DEFAULT);
+             break;
+         case EyePreset::kListening:
+             normal();
++            set_fx(kFxNone);
++            SetTargetColor(EYES_COLOR_LISTEN);
+             SetEyeSize(EYES_WIDE_WIDTH, EYES_WIDE_HEIGHT);
+             eyes_.setMood(DEFAULT);
+             eyes_.setIdleMode(OFF);
+@@ -182,54 +279,150 @@ void EyesDisplay::ApplyPreset(EyePreset p) {
+             break;
+         case EyePreset::kThinking:
+             normal();
++            set_fx(kFxQuestion);
++            SetTargetColor(EYES_COLOR_THINK);
+             eyes_.setMood(DEFAULT);
+             eyes_.setIdleMode(OFF);
+             eyes_.setPosition(NW);
+             eyes_.setAutoblinker(ON, 4, 3);
+             break;
+         case EyePreset::kSpeaking:
+-            // Keep the mood set by the latest server emotion.
+-            SetEyeSize(EYES_WIDTH, EYES_HEIGHT);
++            // Keep the mood, colour and overlays set by the latest server emotion.
+             eyes_.setCuriosity(OFF);
+             eyes_.setIdleMode(OFF);
+             eyes_.setPosition(DEFAULT);
+-            eyes_.setAutoblinker(ON, 3, 3);
++            if (fx_ & kFxQuestion) set_fx(fx_ & ~kFxQuestion);
+             break;
+         case EyePreset::kHappy:
+             normal();
++            set_fx(kFxSparkle);
++            SetTargetColor(EYES_COLOR_HAPPY);
+             eyes_.setMood(HAPPY);
+             break;
+         case EyePreset::kLaugh:
+             normal();
++            set_fx(kFxNotes | kFxSparkle);
++            SetTargetColor(EYES_COLOR_HAPPY);
+             eyes_.setMood(HAPPY);
+             eyes_.anim_laugh();
+             break;
++        case EyePreset::kLove:
++            normal();
++            set_fx(kFxHearts | kFxBlush);
++            SetTargetColor(EYES_COLOR_LOVE);
++            eyes_.setMood(HAPPY);
++            break;
++        case EyePreset::kKiss:
++            normal();
++            set_fx(kFxHearts | kFxBlush);
++            SetTargetColor(EYES_COLOR_LOVE);
++            eyes_.setMood(HAPPY);
++            eyes_.close(false, true);
++            wink_until_ms_ = now_ms() + 900;
++            break;
+         case EyePreset::kSad:
+             normal();
++            set_fx(kFxNone);
++            SetTargetColor(EYES_COLOR_SAD);
+             eyes_.setMood(TIRED);
++            eyes_.setPosition(S);
++            break;
++        case EyePreset::kCry:
++            normal();
++            set_fx(kFxTears);
++            SetTargetColor(EYES_COLOR_SAD);
++            eyes_.setMood(TIRED);
++            eyes_.setPosition(DEFAULT);
+             break;
+         case EyePreset::kAngry:
+             normal();
++            set_fx(kFxAnger);
++            SetTargetColor(EYES_COLOR_ANGRY);
+             eyes_.setMood(ANGRY);
++            eyes_.setPosition(DEFAULT);
+             break;
+         case EyePreset::kSurprised:
+             normal();
++            set_fx(kFxExclaim);
++            SetTargetColor(EYES_COLOR_SURPRISED);
+             SetEyeSize(EYES_WIDE_WIDTH, EYES_WIDE_HEIGHT);
+             eyes_.setMood(DEFAULT);
+             eyes_.setCuriosity(ON);
+             break;
++        case EyePreset::kShocked:
++            normal();
++            set_fx(kFxExclaim);
++            SetTargetColor(EYES_COLOR_SURPRISED);
++            SetEyeSize(EYES_WIDE_WIDTH, EYES_WIDE_HEIGHT);
++            eyes_.setMood(DEFAULT);
++            eyes_.setPosition(DEFAULT);
++            shake_ = true;
++            shake_until_ms_ = now_ms() + 600;
++            break;
+         case EyePreset::kConfused:
+             normal();
++            set_fx(kFxQuestion);
++            SetTargetColor(EYES_COLOR_CONFUSED);
+             eyes_.setMood(DEFAULT);
+             eyes_.anim_confused();
+             break;
+         case EyePreset::kSleepy:
+             normal();
++            set_fx(kFxZzz);
++            SetTargetColor(EYES_COLOR_SLEEPY);
+             eyes_.setMood(TIRED);
++            eyes_.setIdleMode(OFF);
++            eyes_.setPosition(S);
+             eyes_.setAutoblinker(ON, 6, 4);
+             break;
++        case EyePreset::kRelaxed:
++            normal();
++            set_fx(kFxNone);
++            SetTargetColor(EYES_COLOR_COOL);
++            eyes_.setMood(HAPPY);
++            eyes_.setAutoblinker(ON, 5, 3);
++            break;
++        case EyePreset::kEmbarrassed:
++            normal();
++            set_fx(kFxBlush);
++            SetTargetColor(EYES_COLOR_LOVE);
++            eyes_.setMood(TIRED);
++            eyes_.setPosition(SW);
++            eyes_.setSweat(ON);
++            break;
++        case EyePreset::kWink:
++            normal();
++            set_fx(kFxSparkle);
++            SetTargetColor(EYES_COLOR_HAPPY);
++            eyes_.setMood(HAPPY);
++            eyes_.close(false, true);
++            wink_until_ms_ = now_ms() + 900;
++            break;
++        case EyePreset::kCool:
++            normal();
++            set_fx(kFxGlasses);
++            SetTargetColor(EYES_COLOR_COOL);
++            eyes_.setMood(DEFAULT);
++            eyes_.setPosition(DEFAULT);
++            SetEyeSize(EYES_WIDTH, EYES_SQUINT_HEIGHT);
++            break;
++        case EyePreset::kSilly:
++            normal();
++            set_fx(kFxNotes);
++            SetTargetColor(EYES_COLOR_SILLY);
++            eyes_.setMood(HAPPY);
++            eyes_.anim_confused();
++            break;
++        case EyePreset::kDelicious:
++            normal();
++            set_fx(kFxTongue | kFxSparkle);
++            SetTargetColor(EYES_COLOR_HAPPY);
++            eyes_.setMood(HAPPY);
++            break;
+         case EyePreset::kError:
+             normal();
++            set_fx(kFxNone);
++            SetTargetColor(EYES_COLOR_ERROR);
+             eyes_.setMood(DEFAULT);
+             eyes_.setSweat(ON);
+             break;
+@@ -242,9 +435,13 @@ void EyesDisplay::StartDebugCycle(int period_ms) {
+     args.callback = [](void* arg) {
+         auto* self = static_cast<EyesDisplay*>(arg);
+         static const EyePreset order[] = {
+-            EyePreset::kIdle,  EyePreset::kHappy,    EyePreset::kLaugh,    EyePreset::kSad,
+-            EyePreset::kAngry, EyePreset::kSurprised, EyePreset::kConfused, EyePreset::kSleepy,
+-            EyePreset::kError, EyePreset::kListening, EyePreset::kThinking,
++            EyePreset::kIdle,      EyePreset::kHappy,    EyePreset::kLaugh,
++            EyePreset::kLove,      EyePreset::kKiss,     EyePreset::kSad,
++            EyePreset::kCry,       EyePreset::kAngry,    EyePreset::kSurprised,
++            EyePreset::kShocked,   EyePreset::kConfused, EyePreset::kSleepy,
++            EyePreset::kRelaxed,   EyePreset::kEmbarrassed, EyePreset::kWink,
++            EyePreset::kCool,      EyePreset::kSilly,    EyePreset::kDelicious,
++            EyePreset::kError,     EyePreset::kListening, EyePreset::kThinking,
+         };
+         int i = self->debug_index_++ % (int)(sizeof(order) / sizeof(order[0]));
+         ESP_LOGI(TAG, "debug preset %d, %.1f fps", i, self->fps_);
+@@ -256,20 +453,211 @@ void EyesDisplay::StartDebugCycle(int period_ms) {
+     esp_timer_start_periodic(debug_timer_, (uint64_t)period_ms * 1000);
+ }
+ 
++// ---------------------------------------------------------------------------
++// Overlay primitives
++// ---------------------------------------------------------------------------
++void EyesDisplay::FillCircle(int cx, int cy, int r, uint16_t color) {
++    if (r <= 0) return;
++    canvas_.fillRoundRect(cx - r, cy - r, 2 * r + 1, 2 * r + 1, r, color);
++}
++
++void EyesDisplay::DrawHeart(int cx, int cy, int s, uint16_t color) {
++    if (s < 3) return;
++    int r = s / 2;
++    FillCircle(cx - r, cy, r, color);
++    FillCircle(cx + r, cy, r, color);
++    canvas_.fillTriangle(cx - 2 * r, cy + r / 3, cx + 2 * r, cy + r / 3, cx, cy + 2 * r + r / 2,
++                         color);
++}
++
++void EyesDisplay::DrawSparkle(int cx, int cy, int s, uint16_t color) {
++    if (s < 2) return;
++    int t = std::max(1, s / 4);
++    canvas_.fillTriangle(cx - t, cy, cx + t, cy, cx, cy - s, color);
++    canvas_.fillTriangle(cx - t, cy, cx + t, cy, cx, cy + s, color);
++    canvas_.fillTriangle(cx, cy - t, cx, cy + t, cx - s, cy, color);
++    canvas_.fillTriangle(cx, cy - t, cx, cy + t, cx + s, cy, color);
++}
++
++void EyesDisplay::DrawNote(int x, int y, int s, uint16_t color) {
++    // Eighth note: head at bottom-left, stem, flag.
++    int r = s / 3;
++    FillCircle(x, y, r, color);
++    canvas_.fillRect(x + r - 2, y - s - s / 2, 3, s + s / 2, color);
++    canvas_.fillTriangle(x + r, y - s - s / 2, x + r + s / 2, y - s, x + r, y - s, color);
++}
++
++void EyesDisplay::DrawAngerMark(int cx, int cy, int s, uint16_t color) {
++    // Four bent strokes around a centre point (manga "vein" mark).
++    int g = s / 4, l = s / 2, w = std::max(3, s / 6);
++    canvas_.fillRect(cx - g - l, cy - g - w, l, w, color);
++    canvas_.fillRect(cx - g - w, cy - g - l, w, l, color);
++    canvas_.fillRect(cx + g, cy - g - w, l, w, color);
++    canvas_.fillRect(cx + g, cy - g - l, w, l, color);
++    canvas_.fillRect(cx - g - l, cy + g, l, w, color);
++    canvas_.fillRect(cx - g - w, cy + g, w, l, color);
++    canvas_.fillRect(cx + g, cy + g, l, w, color);
++    canvas_.fillRect(cx + g, cy + g, w, l, color);
++}
++
+ // ---------------------------------------------------------------------------
+ // Rendering
+ // ---------------------------------------------------------------------------
+ void EyesDisplay::RenderTaskEntry(void* arg) { static_cast<EyesDisplay*>(arg)->RenderLoop(); }
+ 
+-void EyesDisplay::DrawSubtitle() {
+-    if (subtitle_until_us_ != 0 && esp_timer_get_time() > subtitle_until_us_) {
+-        subtitle_.clear();
+-        subtitle_until_us_ = 0;
++void EyesDisplay::UpdateColor() {
++    if (current_color_ == target_color_) return;
++    current_color_ = fade565(current_color_, target_color_, EYES_COLOR_FADE_STEP);
++    eyes_.setDisplayColors(EYES_COLOR_BG, current_color_);
++}
++
++void EyesDisplay::UpdateTimedAnims(int64_t now) {
++    if (wink_until_ms_ != 0 && now > wink_until_ms_) {
++        wink_until_ms_ = 0;
++        eyes_.open(true, true);
++    }
++    if (shake_) {
++        if (now > shake_until_ms_) {
++            shake_ = false;
++            eyes_.setHFlicker(OFF);
++        } else {
++            eyes_.setHFlicker(ON, 6);
++        }
++    }
++    // Gentle bob while talking: eyes float a few pixels up and down.
++    if (speaking_ && !eyes_.idle) {
++        int base_y = eyes_.getScreenConstraint_Y() / 2;
++        int bob = (int)(tri(now, 700) * 8.0f) - 4;
++        eyes_.eyeLyNext = base_y + bob;
++    }
++}
++
++void EyesDisplay::DrawFx(int64_t now) {
++    if (fx_ == kFxNone) return;
++    const int t = (int)(now - fx_t0_ms_);
++    const int lx = eyes_.eyeLx, ly = eyes_.eyeLy;
++    const int lw = eyes_.eyeLwidthCurrent, lh = eyes_.eyeLheightCurrent;
++    const int rx = eyes_.eyeRx, ry = eyes_.eyeRy;
++    const int rw = eyes_.eyeRwidthCurrent, rh = eyes_.eyeRheightCurrent;
++    const int eyes_top = std::min(ly, ry);
++    const int eyes_bottom = std::max(ly + lh, ry + rh);
++    const int cx = (lx + rx + rw) / 2;
++
++    if (fx_ & kFxGlasses) {
++        // Frames a bit larger than the eyes, dark lenses, white glint, bridge.
++        const int pad = 8;
++        int gy = eyes_top - pad;
++        int gh = std::max(lh, rh) + 2 * pad;
++        canvas_.fillRoundRect(lx - pad, gy, lw + 2 * pad, gh, 14, 0x7BEF);
++        canvas_.fillRoundRect(rx - pad, gy, rw + 2 * pad, gh, 14, 0x7BEF);
++        canvas_.fillRoundRect(lx - pad + 4, gy + 4, lw + 2 * pad - 8, gh - 8, 11, FX_COLOR_GLASSES);
++        canvas_.fillRoundRect(rx - pad + 4, gy + 4, rw + 2 * pad - 8, gh - 8, 11, FX_COLOR_GLASSES);
++        canvas_.fillRect(lx + lw + pad, gy + 10, rx - lx - lw - 2 * pad, 6, 0x7BEF);
++        int glint = (int)(saw(t, 3000) * 160.0f) - 30;  // sweeping glint
++        if (glint > 0 && glint < lw) {
++            canvas_.fillTriangle(lx + glint, gy + 6, lx + glint + 10, gy + 6, lx + glint - 8,
++                                 gy + gh - 6, 0xFFFF);
++        }
++    }
++
++    if (fx_ & kFxBlush) {
++        int by = eyes_bottom + 6;
++        canvas_.fillRoundRect(lx - 4, by, 40, 12, 6, FX_COLOR_BLUSH);
++        canvas_.fillRoundRect(rx + rw - 36, by, 40, 12, 6, FX_COLOR_BLUSH);
++    }
++
++    if (fx_ & kFxTears) {
++        // Two drops falling from the inner bottom of each eye.
++        for (int i = 0; i < 2; ++i) {
++            float p = saw(t, 1200, i * 600);
++            int ex = i == 0 ? lx + lw / 2 + 10 : rx + rw / 2 - 10;
++            int ey = (i == 0 ? ly + lh : ry + rh) + (int)(p * 60.0f);
++            int sz = 6 + (int)(p * 4.0f);
++            canvas_.fillTriangle(ex - sz, ey, ex + sz, ey, ex, ey - sz * 2, FX_COLOR_TEAR);
++            FillCircle(ex, ey, sz, FX_COLOR_TEAR);
++        }
++    }
++
++    if (fx_ & kFxHearts) {
++        // Three hearts floating up beside the eyes, pulsing.
++        static const int kx[3] = {-40, 0, 40};
++        for (int i = 0; i < 3; ++i) {
++            float p = saw(t, 2400, i * 800);
++            int hx = (i == 1 ? cx : (kx[i] < 0 ? lx - 18 : rx + rw + 18));
++            int hy = eyes_bottom + 10 - (int)(p * (eyes_bottom + 10));
++            int s = 10 + (int)(tri(t, 600, i * 200) * 5.0f);
++            if (i == 1) {
++                hy = eyes_top - 14 - (int)(p * 20.0f);
++                s = 7 + (int)(tri(t, 600) * 3.0f);
++            }
++            DrawHeart(hx, hy, s, FX_COLOR_HEART);
++        }
++    }
++
++    if (fx_ & kFxAnger) {
++        int s = 26 + (int)(tri(t, 500) * 8.0f);
++        DrawAngerMark(rx + rw + 4, eyes_top - 8, s, FX_COLOR_ANGER);
++    }
++
++    if (fx_ & kFxZzz) {
++        // Three Z's of growing size drifting up-right.
++        for (int i = 0; i < 3; ++i) {
++            float p = saw(t, 3000, i * 1000);
++            int scale = 1 + (int)(p * 3.0f);
++            int zx = rx + rw - 10 + (int)(p * 40.0f);
++            int zy = eyes_top - 10 - (int)(p * 50.0f);
++            if (zy < 0) continue;
++            canvas_.drawText(zx, zy, "Z", FX_COLOR_ZZZ, scale);
++        }
++    }
++
++    if (fx_ & kFxQuestion) {
++        int qy = std::max(0, eyes_top - 60) + (int)(tri(t, 900) * 8.0f);
++        canvas_.drawText(rx + rw + 6, qy, "?", FX_COLOR_SYMBOL, 3);
++    }
++
++    if (fx_ & kFxExclaim) {
++        int jitter = (t / 60) % 2 == 0 ? -2 : 2;
++        int ey = std::max(0, eyes_top - 60);
++        canvas_.drawText(rx + rw + 8 + (t < 1500 ? jitter : 0), ey, "!", FX_COLOR_SYMBOL, 3);
++    }
++
++    if (fx_ & kFxSparkle) {
++        // Twinkling stars around the eyes.
++        static const int kPos[4][2] = {{-26, -10}, {24, -18}, {-20, 30}, {30, 34}};
++        for (int i = 0; i < 4; ++i) {
++            int s = (int)(tri(t, 900, i * 230) * 12.0f);
++            int px = i % 2 == 0 ? lx + kPos[i][0] : rx + rw + kPos[i][0];
++            int py = eyes_top + kPos[i][1];
++            DrawSparkle(px, py, s, FX_COLOR_SPARKLE);
++        }
++    }
++
++    if (fx_ & kFxNotes) {
++        for (int i = 0; i < 2; ++i) {
++            float p = saw(t, 1800, i * 900);
++            int nx = (i == 0 ? lx - 22 : rx + rw + 22) + (int)(sinf(p * 6.28f) * 6.0f);
++            int ny = eyes_bottom + 10 - (int)(p * (eyes_bottom - 10));
++            DrawNote(nx, ny, 14, FX_COLOR_NOTE);
++        }
+     }
++
++    if (fx_ & kFxTongue) {
++        int ty = eyes_bottom + 14;
++        int wob = (int)(tri(t, 800) * 6.0f);
++        canvas_.fillRect(cx - 30, ty, 60, 4, FX_COLOR_BLUSH);
++        canvas_.fillRoundRect(cx - 12, ty, 24, 18 + wob, 10, FX_COLOR_BLUSH);
++    }
++}
++
++void EyesDisplay::LayoutSubtitle() {
++    subtitle_dirty_ = false;
++    subtitle_lines_.clear();
+     if (subtitle_.empty()) return;
+ 
+     // Split into UTF-8 code points, wrap by character count.
+     std::vector<std::string> cps;
++    cps.reserve(subtitle_.size());
+     for (size_t i = 0; i < subtitle_.size();) {
+         unsigned char c = subtitle_[i];
+         size_t n = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : 4;
+@@ -289,27 +677,45 @@ void EyesDisplay::DrawSubtitle() {
+         per_line = width_ / Rgb565Canvas::glyphW();
+         max_lines = EYES_TEXT_MAX_LINES * 2;
+     }
++    // Word wrap: break at the last space of a full line when there is one.
+     std::vector<std::string> lines;
+-    std::string line;
+-    int count = 0;
+-    for (auto& cp : cps) {
+-        line += cp;
+-        if (++count == per_line) {
+-            lines.push_back(line);
+-            line.clear();
+-            count = 0;
++    size_t start = 0;
++    while (start < cps.size()) {
++        size_t end = std::min(cps.size(), start + per_line);
++        if (end < cps.size()) {
++            size_t sp = end;
++            while (sp > start && cps[sp] != " ") --sp;
++            if (sp > start) end = sp;
+         }
++        std::string line;
++        for (size_t k = start; k < end; ++k) line += cps[k];
++        lines.push_back(line);
++        start = end;
++        while (start < cps.size() && cps[start] == " ") ++start;
+     }
+-    if (!line.empty()) lines.push_back(line);
+     // Keep the tail: the activation code is at the end of the message.
+     size_t first = lines.size() > (size_t)max_lines ? lines.size() - max_lines : 0;
+-    int lh = Rgb565Canvas::glyphH() * scale;
+-    int nlines = (int)(lines.size() - first);
++    subtitle_lines_.assign(lines.begin() + first, lines.end());
++    subtitle_scale_ = scale;
++}
++
++void EyesDisplay::DrawSubtitle() {
++    if (subtitle_until_us_ != 0 && esp_timer_get_time() > subtitle_until_us_) {
++        subtitle_.clear();
++        subtitle_until_us_ = 0;
++        subtitle_dirty_ = true;
++    }
++    if (subtitle_dirty_) LayoutSubtitle();
++    if (subtitle_lines_.empty()) return;
++
++    int lh = Rgb565Canvas::glyphH() * subtitle_scale_;
++    int nlines = (int)subtitle_lines_.size();
+     int y = height_ - nlines * lh - 2;
+     canvas_.fillRect(0, y - 2, width_, nlines * lh + 4, EYES_COLOR_BG);
+-    for (size_t i = first; i < lines.size(); ++i, y += lh) {
+-        int w = Rgb565Canvas::textWidth(lines[i].c_str(), scale);
+-        canvas_.drawText((width_ - w) / 2, y, lines[i].c_str(), EYES_COLOR_TEXT, scale);
++    for (const auto& line : subtitle_lines_) {
++        int w = Rgb565Canvas::textWidth(line.c_str(), subtitle_scale_);
++        canvas_.drawText((width_ - w) / 2, y, line.c_str(), subtitle_color_, subtitle_scale_);
++        y += lh;
+     }
+ }
+ 
+@@ -352,7 +758,11 @@ void EyesDisplay::RenderLoop() {
+     while (true) {
+         DirtyBox box;
+         if (Lock(1000)) {
++            int64_t now = now_ms();
++            UpdateColor();
++            UpdateTimedAnims(now);
+             eyes_.drawEyes();
++            DrawFx(now);
+             DrawSubtitle();
+             box = canvas_.takeDirty();
+             Unlock();
+diff --git a/main/boards/esp32s3-weact-dog/eyes_display.h b/main/boards/esp32s3-weact-dog/eyes_display.h
+index ddef813..26cd4c7 100644
+--- a/main/boards/esp32s3-weact-dog/eyes_display.h
++++ b/main/boards/esp32s3-weact-dog/eyes_display.h
+@@ -1,5 +1,8 @@
+ // EyesDisplay: replaces the stock LVGL chat UI with animated RoboEyes on an
+ // SPI RGB565 panel. Rendering runs in its own low-priority task.
++// On top of the eyes it draws small animated overlays (hearts, tears, blush,
++// Zzz, "?", "!", sparkles, sunglasses, music notes) and fades the eye colour
++// per mood.
+ #pragma once
+ 
+ #include <esp_lcd_panel_io.h>
+@@ -10,6 +13,7 @@
+ 
+ #include <functional>
+ #include <string>
++#include <vector>
+ 
+ #include "display/display.h"
+ #include "rgb565_canvas.h"
+@@ -18,20 +22,30 @@
+ // High-level looks. The mapping from device state / server emotion to these
+ // presets lives in dog_behavior.cc (one table).
+ enum class EyePreset : uint8_t {
+-    kBoot,       // open from closed, DEFAULT
+-    kIdle,       // DEFAULT, autoblink, idle drift
+-    kListening,  // wide, centred, curiosity on
+-    kThinking,   // look up-left, slow drift
+-    kSpeaking,   // keep current mood, centred, autoblink
+-    kNeutral,    // DEFAULT, centred, autoblink (no drift)
+-    kHappy,      // HAPPY
+-    kLaugh,      // HAPPY + anim_laugh()
+-    kSad,        // TIRED (droopy)
+-    kAngry,      // ANGRY
+-    kSurprised,  // wide + curiosity (owner turns it off after a while)
+-    kConfused,   // anim_confused()
+-    kSleepy,     // TIRED + slow blink
+-    kError,      // sweat on, DEFAULT
++    kBoot,         // open from closed, DEFAULT
++    kIdle,         // DEFAULT, autoblink, idle drift
++    kListening,    // wide, centred, curiosity on
++    kThinking,     // look up-left, "?" overlay
++    kSpeaking,     // keep current mood, centred, gentle bob
++    kNeutral,      // DEFAULT, centred, autoblink (no drift)
++    kHappy,        // HAPPY, sparkles
++    kLaugh,        // HAPPY + anim_laugh() + music notes
++    kLove,         // HAPPY, pink, floating hearts
++    kKiss,         // wink + hearts + blush
++    kSad,          // TIRED (droopy), blue
++    kCry,          // TIRED + falling tears
++    kAngry,        // ANGRY, red, anger mark
++    kSurprised,    // wide + curiosity, "!"
++    kShocked,      // wide, white, "!" + shake
++    kConfused,     // anim_confused(), "?"
++    kSleepy,       // TIRED + slow blink + Zzz
++    kRelaxed,      // HAPPY-ish half closed, slow blink
++    kEmbarrassed,  // look down, blush + sweat
++    kWink,         // one eye closes for a moment
++    kCool,         // sunglasses
++    kSilly,        // orange, wobble, music notes
++    kDelicious,    // HAPPY + tongue
++    kError,        // sweat on, orange
+ };
+ 
+ class EyesDisplay : public Display {
+@@ -59,6 +73,10 @@ public:
+     void ApplyPreset(EyePreset preset);
+     void SetCuriosity(bool on);
+     void SetSweat(bool on);
++    void SetSpeaking(bool on);  // gentle eye bob while the robot talks
++    void LookAt(unsigned char position);  // one of roboeyes N/NE/E/... DEFAULT
++    void Blink();
++    void Wink();
+     void SetEmotionHook(EmotionHook hook) { emotion_hook_ = std::move(hook); }
+     void SetChatHook(ChatHook hook) { chat_hook_ = std::move(hook); }
+ 
+@@ -71,11 +89,41 @@ protected:
+     void Unlock() override;
+ 
+ private:
++    // Overlay effects, combined as a bit mask.
++    enum Fx : uint16_t {
++        kFxNone = 0,
++        kFxHearts = 1 << 0,
++        kFxTears = 1 << 1,
++        kFxBlush = 1 << 2,
++        kFxAnger = 1 << 3,
++        kFxZzz = 1 << 4,
++        kFxQuestion = 1 << 5,
++        kFxExclaim = 1 << 6,
++        kFxSparkle = 1 << 7,
++        kFxGlasses = 1 << 8,
++        kFxNotes = 1 << 9,
++        kFxTongue = 1 << 10,
++    };
++
+     static void RenderTaskEntry(void* arg);
+     void RenderLoop();
+     void DrawSubtitle();
++    void LayoutSubtitle();
++    void SetSubtitle(const char* text, uint16_t color, int duration_ms);
++    void DrawFx(int64_t now_ms);
++    void UpdateColor();
++    void UpdateTimedAnims(int64_t now_ms);
+     void Push(const DirtyBox& box);
+     void SetEyeSize(int w, int h);
++    void SetTargetColor(uint16_t color) { target_color_ = color; }
++
++    // Overlay primitives
++    void FillCircle(int cx, int cy, int r, uint16_t color);
++    void DrawHeart(int cx, int cy, int s, uint16_t color);
++    void DrawSparkle(int cx, int cy, int s, uint16_t color);
++    void DrawNote(int x, int y, int s, uint16_t color);
++    void DrawAngerMark(int cx, int cy, int s, uint16_t color);
++
+     static bool OnColorTransDone(esp_lcd_panel_io_handle_t io,
+                                  esp_lcd_panel_io_event_data_t* edata, void* user_ctx);
+ 
+@@ -90,10 +138,26 @@ private:
+     int dma_next_ = 0;
+     TaskHandle_t task_ = nullptr;
+ 
++    // Subtitle (text is laid out once per change, not every frame)
+     std::string subtitle_;
++    uint16_t subtitle_color_ = 0xFFFF;
+     int64_t subtitle_until_us_ = 0;  // 0 = no expiry
+-    bool subtitle_drawn_ = false;
+-    bool sweat_locked_ = false;      // error preset keeps sweat until a non-error preset
++    bool subtitle_sticky_ = false;   // system message (activation code, Wi-Fi hint)
++    std::vector<std::string> subtitle_lines_;
++    int subtitle_scale_ = 1;
++    bool subtitle_dirty_ = true;
++
++    // Mood colour fade
++    uint16_t current_color_ = 0;
++    uint16_t target_color_ = 0;
++
++    // Overlays and timed animations
++    uint16_t fx_ = kFxNone;
++    int64_t fx_t0_ms_ = 0;
++    bool speaking_ = false;
++    bool shake_ = false;
++    int64_t wink_until_ms_ = 0;
++    int64_t shake_until_ms_ = 0;
+ 
+     EmotionHook emotion_hook_;
+     ChatHook chat_hook_;
+diff --git a/main/boards/esp32s3-weact-dog/leg_servos.cc b/main/boards/esp32s3-weact-dog/leg_servos.cc
+deleted file mode 100644
+index 59fbda4..0000000
+--- a/main/boards/esp32s3-weact-dog/leg_servos.cc
++++ /dev/null
+@@ -1,262 +0,0 @@
+-#include "leg_servos.h"
+-
+-#include <esp_log.h>
+-#include <esp_timer.h>
+-
+-#include <cmath>
+-
+-#define TAG "LegServos"
+-
+-// ---------------------------------------------------------------------------
+-// Motion library (logical degrees, 90 = neutral; 0 = keep this leg as is).
+-// Order of legs: FL, FR, RL, RR.
+-// ---------------------------------------------------------------------------
+-namespace {
+-struct Motion {
+-    const void* frames;
+-    int count;
+-    bool quick;
+-};
+-#define KF(fl, fr, rl, rr, hold) {{fl, fr, rl, rr}, hold}
+-
+-struct KeyframeDef {
+-    uint8_t angle[LEG_COUNT];
+-    uint16_t hold_ms;
+-};
+-
+-const KeyframeDef kStand[] = {KF(90, 90, 90, 90, 0)};
+-const KeyframeDef kSit[] = {KF(0, 0, 125, 125, 200), KF(100, 100, 0, 0, 0)};
+-const KeyframeDef kCrouch[] = {KF(65, 65, 65, 65, 0)};
+-const KeyframeDef kWiggle[] = {
+-    KF(90, 90, 90, 90, 0),  KF(0, 0, 80, 100, 40), KF(0, 0, 100, 80, 40),
+-    KF(0, 0, 80, 100, 40),  KF(0, 0, 100, 80, 40), KF(0, 0, 80, 100, 40),
+-    KF(0, 0, 100, 80, 40),  KF(0, 0, 90, 90, 0),
+-};
+-const KeyframeDef kSoftWiggle[] = {
+-    KF(96, 84, 0, 0, 60), KF(84, 96, 0, 0, 60), KF(96, 84, 0, 0, 60), KF(90, 90, 0, 0, 0),
+-};
+-const KeyframeDef kWave[] = {
+-    KF(90, 90, 90, 90, 0), KF(130, 0, 0, 0, 120), KF(110, 0, 0, 0, 40), KF(130, 0, 0, 0, 40),
+-    KF(110, 0, 0, 0, 40),  KF(130, 0, 0, 0, 120), KF(90, 0, 0, 0, 0),
+-};
+-const KeyframeDef kBreathe[] = {
+-    KF(94, 94, 0, 0, 400), KF(0, 0, 94, 94, 400), KF(90, 90, 0, 0, 300), KF(0, 0, 90, 90, 0),
+-};
+-#undef KF
+-#define MOTION(arr, quick) Motion{arr, (int)(sizeof(arr) / sizeof(arr[0])), quick}
+-
+-Motion MotionFor(LegMotion m) {
+-    switch (m) {
+-        case LegMotion::kStand: return MOTION(kStand, false);
+-        case LegMotion::kQuickStand: return MOTION(kStand, true);
+-        case LegMotion::kSit: return MOTION(kSit, false);
+-        case LegMotion::kCrouch: return MOTION(kCrouch, false);
+-        case LegMotion::kWiggle: return MOTION(kWiggle, false);
+-        case LegMotion::kSoftWiggle: return MOTION(kSoftWiggle, false);
+-        case LegMotion::kWave: return MOTION(kWave, false);
+-        case LegMotion::kBreathe: return MOTION(kBreathe, false);
+-        default: return Motion{nullptr, 0, false};
+-    }
+-}
+-}  // namespace
+-
+-const char* LegMotionName(LegMotion m) {
+-    switch (m) {
+-        case LegMotion::kNone: return "none";
+-        case LegMotion::kStand: return "stand";
+-        case LegMotion::kQuickStand: return "quick_stand";
+-        case LegMotion::kSit: return "sit";
+-        case LegMotion::kCrouch: return "crouch";
+-        case LegMotion::kWiggle: return "wiggle";
+-        case LegMotion::kSoftWiggle: return "soft_wiggle";
+-        case LegMotion::kWave: return "wave";
+-        case LegMotion::kBreathe: return "idle_breathe";
+-        case LegMotion::kRelax: return "relax";
+-    }
+-    return "?";
+-}
+-
+-static_assert(sizeof(KeyframeDef) == sizeof(uint8_t) * LEG_COUNT + sizeof(uint16_t),
+-              "keyframe layout");
+-
+-LegServos::LegServos() {
+-    for (int i = 0; i < LEG_COUNT; ++i) {
+-        legs_[i].channel = (ledc_channel_t)(SERVO_LEDC_FIRST_CHANNEL + i);
+-    }
+-}
+-
+-int64_t LegServos::NowMs() { return esp_timer_get_time() / 1000; }
+-
+-void LegServos::Begin() {
+-    if (task_ != nullptr) return;
+-    queue_ = xQueueCreate(4, sizeof(uint8_t));
+-    xTaskCreate(&LegServos::TaskEntry, "legs", SERVO_TASK_STACK, this, SERVO_TASK_PRIORITY, &task_);
+-}
+-
+-void LegServos::AttachSequential() {
+-    if (queue_ == nullptr) return;
+-    uint8_t cmd = kCmdAttach;
+-    xQueueSend(queue_, &cmd, 0);
+-}
+-
+-void LegServos::Play(LegMotion motion) {
+-    if (queue_ == nullptr || motion == LegMotion::kNone) return;
+-    uint8_t cmd = (uint8_t)motion;
+-    if (xQueueSend(queue_, &cmd, 0) != pdTRUE) {
+-        ESP_LOGW(TAG, "motion queue full, dropping %s", LegMotionName(motion));
+-    }
+-}
+-
+-void LegServos::WriteAngle(int leg, float logical) {
+-    // Clamp the logical angle, apply mount direction + trim, clamp again.
+-    logical = std::fmin(std::fmax(logical, (float)SERVO_MIN_DEG), (float)SERVO_MAX_DEG);
+-    const LegConfig& cfg = kLegConfig[leg];
+-    float phys = cfg.invert ? 180.0f - logical : logical;
+-    phys += cfg.trim_deg;
+-    phys = std::fmin(std::fmax(phys, (float)SERVO_MIN_DEG), (float)SERVO_MAX_DEG);
+-
+-    float pulse_us = SERVO_PULSE_MIN_US + (SERVO_PULSE_MAX_US - SERVO_PULSE_MIN_US) * phys / 180.0f;
+-    uint32_t period_us = 1000000 / SERVO_PWM_HZ;
+-    uint32_t duty = (uint32_t)(pulse_us * (float)(1 << SERVO_PWM_BITS) / (float)period_us);
+-    ledc_set_duty(LEDC_LOW_SPEED_MODE, legs_[leg].channel, duty);
+-    ledc_update_duty(LEDC_LOW_SPEED_MODE, legs_[leg].channel);  // also re-enables output
+-    legs_[leg].attached = true;
+-}
+-
+-void LegServos::Detach(int leg) {
+-    ledc_stop(LEDC_LOW_SPEED_MODE, legs_[leg].channel, 0);
+-    legs_[leg].attached = false;
+-}
+-
+-void LegServos::LoadMotion(LegMotion m) {
+-    if (m == LegMotion::kRelax) {
+-        frames_ = nullptr;
+-        frame_count_ = 0;
+-        for (int i = 0; i < LEG_COUNT; ++i) {
+-            legs_[i].target = legs_[i].current;
+-            legs_[i].moving = false;
+-            if (legs_[i].attached) Detach(i);
+-        }
+-        busy_ = false;
+-        return;
+-    }
+-    Motion mo = MotionFor(m);
+-    if (mo.frames == nullptr) return;
+-    ESP_LOGI(TAG, "play %s", LegMotionName(m));
+-    frames_ = static_cast<const Keyframe*>(mo.frames);
+-    frame_count_ = mo.count;
+-    frame_index_ = 0;
+-    frame_active_ = false;
+-    frame_settled_ms_ = 0;
+-    quick_ = mo.quick;
+-    busy_ = true;
+-}
+-
+-void LegServos::TaskEntry(void* arg) { static_cast<LegServos*>(arg)->Loop(); }
+-
+-void LegServos::Loop() {
+-    const float step = (float)SERVO_SLEW_DEG_PER_S * SERVO_TICK_MS / 1000.0f;
+-    TickType_t last = xTaskGetTickCount();
+-    while (true) {
+-        uint8_t cmd;
+-        while (xQueueReceive(queue_, &cmd, 0) == pdTRUE) {
+-            if (cmd == kCmdAttach) {
+-                if (initialized_) continue;
+-                ledc_timer_config_t timer = {};
+-                timer.speed_mode = LEDC_LOW_SPEED_MODE;
+-                timer.duty_resolution = (ledc_timer_bit_t)SERVO_PWM_BITS;
+-                timer.timer_num = SERVO_LEDC_TIMER;
+-                timer.freq_hz = SERVO_PWM_HZ;
+-                timer.clk_cfg = LEDC_AUTO_CLK;
+-                ESP_ERROR_CHECK(ledc_timer_config(&timer));
+-                for (int i = 0; i < LEG_COUNT; ++i) {
+-                    ledc_channel_config_t ch = {};
+-                    ch.gpio_num = kLegConfig[i].gpio;
+-                    ch.speed_mode = LEDC_LOW_SPEED_MODE;
+-                    ch.channel = legs_[i].channel;
+-                    ch.timer_sel = SERVO_LEDC_TIMER;
+-                    ch.duty = 0;
+-                    ch.hpoint = 0;
+-                    ESP_ERROR_CHECK(ledc_channel_config(&ch));
+-                    // One servo at a time; position before first power-up is
+-                    // unknown, so this single jump is unavoidable.
+-                    legs_[i].current = legs_[i].target = SERVO_NEUTRAL_DEG;
+-                    WriteAngle(i, SERVO_NEUTRAL_DEG);
+-                    legs_[i].settled_ms = NowMs();
+-                    ESP_LOGI(TAG, "attached leg %d on GPIO%d", i, (int)kLegConfig[i].gpio);
+-                    vTaskDelay(pdMS_TO_TICKS(SERVO_INIT_GAP_MS));
+-                }
+-                initialized_ = true;
+-            } else if (initialized_) {
+-                LoadMotion((LegMotion)cmd);
+-            }
+-        }
+-
+-        int64_t now = NowMs();
+-        if (initialized_) {
+-            // 1) start the next keyframe
+-            if (frames_ != nullptr && !frame_active_ && frame_index_ < frame_count_) {
+-                const Keyframe& kf = frames_[frame_index_];
+-                for (int i = 0; i < LEG_COUNT; ++i) {
+-                    if (kf.angle[i] != 0) legs_[i].target = kf.angle[i];
+-                }
+-                frame_active_ = true;
+-                frame_settled_ms_ = 0;
+-            }
+-
+-            // 2) start legs that need to move, max SERVO_MAX_MOVING, staggered
+-            int moving = 0;
+-            for (auto& l : legs_) moving += l.moving ? 1 : 0;
+-            for (int i = 0; i < LEG_COUNT; ++i) {
+-                Leg& l = legs_[i];
+-                if (l.moving || std::fabs(l.target - l.current) < 0.5f) continue;
+-                if (moving >= SERVO_MAX_MOVING || now - last_start_ms_ < SERVO_STAGGER_MS) break;
+-                l.moving = true;
+-                last_start_ms_ = now;
+-                moving++;
+-                if (!l.attached) WriteAngle(i, l.current);  // re-attach at known position
+-            }
+-
+-            // 3) ramp moving legs
+-            bool all_settled = true;
+-            for (int i = 0; i < LEG_COUNT; ++i) {
+-                Leg& l = legs_[i];
+-                if (l.moving) {
+-                    float d = l.target - l.current;
+-                    if (std::fabs(d) <= step) {
+-                        l.current = l.target;
+-                        l.moving = false;
+-                        l.settled_ms = now;
+-                    } else {
+-                        l.current += d > 0 ? step : -step;
+-                    }
+-                    WriteAngle(i, l.current);
+-                }
+-                if (l.moving || std::fabs(l.target - l.current) >= 0.5f) all_settled = false;
+-            }
+-
+-            // 4) keyframe hold / advance
+-            if (frame_active_ && all_settled) {
+-                if (frame_settled_ms_ == 0) frame_settled_ms_ = now;
+-                uint16_t hold = quick_ ? 0 : frames_[frame_index_].hold_ms;
+-                if (now - frame_settled_ms_ >= hold) {
+-                    frame_active_ = false;
+-                    if (++frame_index_ >= frame_count_) {
+-                        frames_ = nullptr;
+-                        busy_ = false;
+-                    }
+-                }
+-            }
+-
+-            // 5) cut PWM on legs holding a pose for too long
+-            for (int i = 0; i < LEG_COUNT; ++i) {
+-                Leg& l = legs_[i];
+-                if (l.attached && !l.moving && std::fabs(l.target - l.current) < 0.5f &&
+-                    now - l.settled_ms >= SERVO_DETACH_AFTER_MS) {
+-                    Detach(i);
+-                }
+-            }
+-        }
+-        vTaskDelayUntil(&last, pdMS_TO_TICKS(SERVO_TICK_MS));
+-    }
+-}
+diff --git a/main/boards/esp32s3-weact-dog/leg_servos.h b/main/boards/esp32s3-weact-dog/leg_servos.h
+deleted file mode 100644
+index 4b6b3f5..0000000
+--- a/main/boards/esp32s3-weact-dog/leg_servos.h
++++ /dev/null
+@@ -1,78 +0,0 @@
+-// LegServos: 4 symbolic servo "legs" with hard power-safety rules:
+-//  - at most SERVO_MAX_MOVING servos in motion, start-ups staggered
+-//  - slew-rate limited ramps, never an instant jump (except the very first attach)
+-//  - PWM detached after a pose is held SERVO_DETACH_AFTER_MS
+-//  - runs in its own task; Play() never blocks the caller
+-#pragma once
+-
+-#include <driver/ledc.h>
+-#include <freertos/FreeRTOS.h>
+-#include <freertos/queue.h>
+-#include <freertos/task.h>
+-
+-#include <cstdint>
+-
+-#include "dog_config.h"
+-
+-enum class LegMotion : uint8_t {
+-    kNone,
+-    kStand,
+-    kQuickStand,  // stand, but with no pauses between keyframes
+-    kSit,
+-    kCrouch,
+-    kWiggle,      // alternating rear shake
+-    kSoftWiggle,  // small front shake (while speaking)
+-    kWave,        // front-left paw wave
+-    kBreathe,     // very small slow motion
+-    kRelax,       // stop PWM on all legs now
+-};
+-
+-const char* LegMotionName(LegMotion m);
+-
+-class LegServos {
+-public:
+-    LegServos();
+-    // Creates the task. Servos stay unpowered until AttachSequential().
+-    void Begin();
+-    // Sequentially attach every servo at neutral (call once Wi-Fi + audio are up).
+-    void AttachSequential();
+-    // Replace whatever is playing with this motion (non-blocking).
+-    void Play(LegMotion motion);
+-    bool attached() const { return initialized_; }
+-    bool busy() const { return busy_; }
+-
+-private:
+-    struct Keyframe {
+-        uint8_t angle[LEG_COUNT];  // logical degrees; 0 = keep current
+-        uint16_t hold_ms;
+-    };
+-    struct Leg {
+-        float current = SERVO_NEUTRAL_DEG;
+-        float target = SERVO_NEUTRAL_DEG;
+-        bool attached = false;
+-        bool moving = false;
+-        int64_t settled_ms = 0;
+-        ledc_channel_t channel = LEDC_CHANNEL_0;
+-    };
+-    enum Cmd : uint8_t { kCmdAttach = 0xF0 };
+-
+-    static void TaskEntry(void* arg);
+-    void Loop();
+-    void LoadMotion(LegMotion m);
+-    void WriteAngle(int leg, float logical_deg);
+-    void Detach(int leg);
+-    static int64_t NowMs();
+-
+-    Leg legs_[LEG_COUNT];
+-    const Keyframe* frames_ = nullptr;
+-    int frame_count_ = 0;
+-    int frame_index_ = 0;
+-    bool frame_active_ = false;
+-    bool quick_ = false;
+-    int64_t frame_settled_ms_ = 0;
+-    int64_t last_start_ms_ = 0;
+-    volatile bool initialized_ = false;
+-    volatile bool busy_ = false;
+-    QueueHandle_t queue_ = nullptr;
+-    TaskHandle_t task_ = nullptr;
+-};
+diff --git a/main/boards/esp32s3-weact-dog/tof_sensor.cc b/main/boards/esp32s3-weact-dog/tof_sensor.cc
+new file mode 100644
+index 0000000..d0f5a4f
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/tof_sensor.cc
+@@ -0,0 +1,405 @@
++#include "tof_sensor.h"
++
++#include <esp_log.h>
++#include <esp_timer.h>
++
++#include "dog_config.h"
++
++#define TAG "TofSensor"
++
++namespace {
++constexpr uint8_t kAddr = 0x29;
++constexpr int kI2cTimeoutMs = 50;
++
++// VL53L0X registers (names from the ST API / Pololu library)
++constexpr uint8_t SYSRANGE_START = 0x00;
++constexpr uint8_t SYSTEM_SEQUENCE_CONFIG = 0x01;
++constexpr uint8_t SYSTEM_INTERMEASUREMENT_PERIOD = 0x04;
++constexpr uint8_t SYSTEM_INTERRUPT_CONFIG_GPIO = 0x0A;
++constexpr uint8_t SYSTEM_INTERRUPT_CLEAR = 0x0B;
++constexpr uint8_t RESULT_INTERRUPT_STATUS = 0x13;
++constexpr uint8_t RESULT_RANGE_STATUS = 0x14;
++constexpr uint8_t FINAL_RANGE_CONFIG_MIN_COUNT_RATE_RTN_LIMIT = 0x44;
++constexpr uint8_t MSRC_CONFIG_CONTROL = 0x60;
++constexpr uint8_t GPIO_HV_MUX_ACTIVE_HIGH = 0x84;
++constexpr uint8_t VHV_CONFIG_PAD_SCL_SDA__EXTSUP_HV = 0x89;
++constexpr uint8_t GLOBAL_CONFIG_SPAD_ENABLES_REF_0 = 0xB0;
++constexpr uint8_t GLOBAL_CONFIG_REF_EN_START_SELECT = 0xB6;
++constexpr uint8_t DYNAMIC_SPAD_NUM_REQUESTED_REF_SPAD = 0x4E;
++constexpr uint8_t DYNAMIC_SPAD_REF_EN_START_OFFSET = 0x4F;
++constexpr uint8_t IDENTIFICATION_MODEL_ID = 0xC0;
++constexpr uint8_t OSC_CALIBRATE_VAL = 0xF8;
++
++struct RegVal {
++    uint8_t reg, val;
++};
++
++// ST "DefaultTuningSettings" (vl53l0x_tuning.h), as used by Pololu's init().
++const RegVal kTuning[] = {
++    {0xFF, 0x01}, {0x00, 0x00}, {0xFF, 0x00}, {0x09, 0x00}, {0x10, 0x00}, {0x11, 0x00},
++    {0x24, 0x01}, {0x25, 0xFF}, {0x75, 0x00}, {0xFF, 0x01}, {0x4E, 0x2C}, {0x48, 0x00},
++    {0x30, 0x20}, {0xFF, 0x00}, {0x30, 0x09}, {0x54, 0x00}, {0x31, 0x04}, {0x32, 0x03},
++    {0x40, 0x83}, {0x46, 0x25}, {0x60, 0x00}, {0x27, 0x00}, {0x50, 0x06}, {0x51, 0x00},
++    {0x52, 0x96}, {0x56, 0x08}, {0x57, 0x30}, {0x61, 0x00}, {0x62, 0x00}, {0x64, 0x00},
++    {0x65, 0x00}, {0x66, 0xA0}, {0xFF, 0x01}, {0x22, 0x32}, {0x47, 0x14}, {0x49, 0xFF},
++    {0x4A, 0x00}, {0xFF, 0x00}, {0x7A, 0x0A}, {0x7B, 0x00}, {0x78, 0x21}, {0xFF, 0x01},
++    {0x23, 0x34}, {0x42, 0x00}, {0x44, 0xFF}, {0x45, 0x26}, {0x46, 0x05}, {0x40, 0x40},
++    {0x0E, 0x06}, {0x20, 0x1A}, {0x43, 0x40}, {0xFF, 0x00}, {0x34, 0x03}, {0x35, 0x44},
++    {0xFF, 0x01}, {0x31, 0x04}, {0x4B, 0x09}, {0x4C, 0x05}, {0x4D, 0x04}, {0xFF, 0x00},
++    {0x44, 0x00}, {0x45, 0x20}, {0x47, 0x08}, {0x48, 0x28}, {0x67, 0x00}, {0x70, 0x04},
++    {0x71, 0x01}, {0x72, 0xFE}, {0x76, 0x00}, {0x77, 0x00}, {0xFF, 0x01}, {0x0D, 0x01},
++    {0xFF, 0x00}, {0x80, 0x01}, {0x01, 0xF8}, {0xFF, 0x01}, {0x8E, 0x01}, {0x00, 0x01},
++    {0xFF, 0x00}, {0x80, 0x00},
++};
++}  // namespace
++
++TofSensor::TofSensor(gpio_num_t sda, gpio_num_t scl, gpio_num_t xshut)
++    : sda_(sda), scl_(scl), xshut_(xshut) {}
++
++void TofSensor::Start(NearCallback on_near) {
++    on_near_ = std::move(on_near);
++    xTaskCreate(&TofSensor::TaskEntry, "tof", 4096, this, TOF_TASK_PRIORITY, &task_);
++}
++
++void TofSensor::TaskEntry(void* arg) { static_cast<TofSensor*>(arg)->Loop(); }
++
++// ---------------------------------------------------------------------------
++// I2C helpers (never abort, set ok_ = false on error)
++// ---------------------------------------------------------------------------
++bool TofSensor::Write8(uint8_t reg, uint8_t value) {
++    uint8_t buf[2] = {reg, value};
++    bool r = i2c_master_transmit(dev_, buf, 2, kI2cTimeoutMs) == ESP_OK;
++    ok_ = ok_ && r;
++    return r;
++}
++
++bool TofSensor::Write16(uint8_t reg, uint16_t value) {
++    uint8_t buf[3] = {reg, (uint8_t)(value >> 8), (uint8_t)value};
++    bool r = i2c_master_transmit(dev_, buf, 3, kI2cTimeoutMs) == ESP_OK;
++    ok_ = ok_ && r;
++    return r;
++}
++
++bool TofSensor::Write32(uint8_t reg, uint32_t value) {
++    uint8_t buf[5] = {reg, (uint8_t)(value >> 24), (uint8_t)(value >> 16), (uint8_t)(value >> 8),
++                      (uint8_t)value};
++    bool r = i2c_master_transmit(dev_, buf, 5, kI2cTimeoutMs) == ESP_OK;
++    ok_ = ok_ && r;
++    return r;
++}
++
++bool TofSensor::WriteMulti(uint8_t reg, const uint8_t* src, size_t count) {
++    uint8_t buf[8];
++    if (count > sizeof(buf) - 1) return false;
++    buf[0] = reg;
++    for (size_t i = 0; i < count; ++i) buf[i + 1] = src[i];
++    bool r = i2c_master_transmit(dev_, buf, count + 1, kI2cTimeoutMs) == ESP_OK;
++    ok_ = ok_ && r;
++    return r;
++}
++
++bool TofSensor::Read8(uint8_t reg, uint8_t* value) {
++    bool r = i2c_master_transmit_receive(dev_, &reg, 1, value, 1, kI2cTimeoutMs) == ESP_OK;
++    ok_ = ok_ && r;
++    return r;
++}
++
++bool TofSensor::Read16(uint8_t reg, uint16_t* value) {
++    uint8_t b[2] = {0, 0};
++    bool r = i2c_master_transmit_receive(dev_, &reg, 1, b, 2, kI2cTimeoutMs) == ESP_OK;
++    ok_ = ok_ && r;
++    *value = (uint16_t)((b[0] << 8) | b[1]);
++    return r;
++}
++
++bool TofSensor::ReadMulti(uint8_t reg, uint8_t* dst, size_t count) {
++    bool r = i2c_master_transmit_receive(dev_, &reg, 1, dst, count, kI2cTimeoutMs) == ESP_OK;
++    ok_ = ok_ && r;
++    return r;
++}
++
++bool TofSensor::WaitFor(uint8_t reg, uint8_t mask, bool want_nonzero, int timeout_ms) {
++    int64_t end = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
++    uint8_t v = 0;
++    while (esp_timer_get_time() < end) {
++        if (!Read8(reg, &v)) return false;
++        if (((v & mask) != 0) == want_nonzero) return true;
++        vTaskDelay(pdMS_TO_TICKS(2));
++    }
++    ESP_LOGW(TAG, "timeout waiting for reg 0x%02X", reg);
++    return false;
++}
++
++// ---------------------------------------------------------------------------
++// VL53L0X init (Pololu VL53L0X::init sequence)
++// ---------------------------------------------------------------------------
++bool TofSensor::InitBus() {
++    if (xshut_ != GPIO_NUM_NC) {
++        gpio_config_t io = {};
++        io.pin_bit_mask = 1ULL << xshut_;
++        io.mode = GPIO_MODE_OUTPUT;
++        gpio_config(&io);
++        gpio_set_level(xshut_, 0);  // hard reset
++        vTaskDelay(pdMS_TO_TICKS(10));
++        gpio_set_level(xshut_, 1);
++        vTaskDelay(pdMS_TO_TICKS(10));  // boot time 1.2 ms max
++    }
++
++    i2c_master_bus_config_t bus_cfg = {};
++    bus_cfg.i2c_port = TOF_I2C_PORT;
++    bus_cfg.sda_io_num = sda_;
++    bus_cfg.scl_io_num = scl_;
++    bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
++    bus_cfg.glitch_ignore_cnt = 7;
++    bus_cfg.flags.enable_internal_pullup = true;
++    if (i2c_new_master_bus(&bus_cfg, &bus_) != ESP_OK) {
++        ESP_LOGE(TAG, "I2C bus init failed");
++        return false;
++    }
++    if (i2c_master_probe(bus_, kAddr, 100) != ESP_OK) {
++        ESP_LOGW(TAG, "No VL53L0X at 0x29 (SDA %d, SCL %d)", sda_, scl_);
++        return false;
++    }
++    i2c_device_config_t dev_cfg = {};
++    dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
++    dev_cfg.device_address = kAddr;
++    dev_cfg.scl_speed_hz = TOF_I2C_HZ;
++    return i2c_master_bus_add_device(bus_, &dev_cfg, &dev_) == ESP_OK;
++}
++
++bool TofSensor::GetSpadInfo(uint8_t* count, bool* type_is_aperture) {
++    uint8_t tmp = 0;
++    Write8(0x80, 0x01);
++    Write8(0xFF, 0x01);
++    Write8(0x00, 0x00);
++    Write8(0xFF, 0x06);
++    Read8(0x83, &tmp);
++    Write8(0x83, tmp | 0x04);
++    Write8(0xFF, 0x07);
++    Write8(0x81, 0x01);
++    Write8(0x80, 0x01);
++    Write8(0x94, 0x6B);
++    Write8(0x83, 0x00);
++    if (!WaitFor(0x83, 0xFF, true, 100)) return false;
++    Write8(0x83, 0x01);
++    Read8(0x92, &tmp);
++    *count = tmp & 0x7F;
++    *type_is_aperture = (tmp >> 7) & 0x01;
++    Write8(0x81, 0x00);
++    Write8(0xFF, 0x06);
++    Read8(0x83, &tmp);
++    Write8(0x83, tmp & ~0x04);
++    Write8(0xFF, 0x01);
++    Write8(0x00, 0x01);
++    Write8(0xFF, 0x00);
++    Write8(0x80, 0x00);
++    return ok_;
++}
++
++bool TofSensor::PerformSingleRefCalibration(uint8_t vhv_init_byte) {
++    Write8(SYSRANGE_START, 0x01 | vhv_init_byte);
++    if (!WaitFor(RESULT_INTERRUPT_STATUS, 0x07, true, 200)) return false;
++    Write8(SYSTEM_INTERRUPT_CLEAR, 0x01);
++    Write8(SYSRANGE_START, 0x00);
++    return ok_;
++}
++
++bool TofSensor::Init() {
++    ok_ = true;
++    uint8_t v = 0;
++    if (!Read8(IDENTIFICATION_MODEL_ID, &v) || v != 0xEE) {
++        ESP_LOGW(TAG, "Model id 0x%02X, expected 0xEE (VL53L1X is not supported)", v);
++        return false;
++    }
++
++    // 2.8 V I/O mode
++    Read8(VHV_CONFIG_PAD_SCL_SDA__EXTSUP_HV, &v);
++    Write8(VHV_CONFIG_PAD_SCL_SDA__EXTSUP_HV, v | 0x01);
++    // "Set I2C standard mode"
++    Write8(0x88, 0x00);
++    Write8(0x80, 0x01);
++    Write8(0xFF, 0x01);
++    Write8(0x00, 0x00);
++    Read8(0x91, &stop_variable_);
++    Write8(0x00, 0x01);
++    Write8(0xFF, 0x00);
++    Write8(0x80, 0x00);
++
++    // Disable SIGNAL_RATE_MSRC and SIGNAL_RATE_PRE_RANGE limit checks
++    Read8(MSRC_CONFIG_CONTROL, &v);
++    Write8(MSRC_CONFIG_CONTROL, v | 0x12);
++    // Signal rate limit 0.25 MCPS (Q9.7)
++    Write16(FINAL_RANGE_CONFIG_MIN_COUNT_RATE_RTN_LIMIT, (uint16_t)(0.25f * (1 << 7)));
++    Write8(SYSTEM_SEQUENCE_CONFIG, 0xFF);
++    if (!ok_) return false;
++
++    // Reference SPADs
++    uint8_t spad_count = 0;
++    bool spad_aperture = false;
++    if (!GetSpadInfo(&spad_count, &spad_aperture)) return false;
++    uint8_t ref_spad_map[6];
++    if (!ReadMulti(GLOBAL_CONFIG_SPAD_ENABLES_REF_0, ref_spad_map, 6)) return false;
++    Write8(0xFF, 0x01);
++    Write8(DYNAMIC_SPAD_REF_EN_START_OFFSET, 0x00);
++    Write8(DYNAMIC_SPAD_NUM_REQUESTED_REF_SPAD, 0x2C);
++    Write8(0xFF, 0x00);
++    Write8(GLOBAL_CONFIG_REF_EN_START_SELECT, 0xB4);
++    uint8_t first_spad = spad_aperture ? 12 : 0;
++    uint8_t enabled = 0;
++    for (uint8_t i = 0; i < 48; i++) {
++        if (i < first_spad || enabled == spad_count) {
++            ref_spad_map[i / 8] &= ~(1 << (i % 8));
++        } else if ((ref_spad_map[i / 8] >> (i % 8)) & 0x1) {
++            enabled++;
++        }
++    }
++    WriteMulti(GLOBAL_CONFIG_SPAD_ENABLES_REF_0, ref_spad_map, 6);
++
++    for (const auto& rv : kTuning) Write8(rv.reg, rv.val);
++
++    // Interrupt on new sample ready, active low
++    Write8(SYSTEM_INTERRUPT_CONFIG_GPIO, 0x04);
++    Read8(GPIO_HV_MUX_ACTIVE_HIGH, &v);
++    Write8(GPIO_HV_MUX_ACTIVE_HIGH, v & ~0x10);
++    Write8(SYSTEM_INTERRUPT_CLEAR, 0x01);
++
++    // Sequence: DSS, pre-range, final-range (as Pololu)
++    Write8(SYSTEM_SEQUENCE_CONFIG, 0xE8);
++    if (!ok_) return false;
++
++    // VHV and phase reference calibration
++    Write8(SYSTEM_SEQUENCE_CONFIG, 0x01);
++    if (!PerformSingleRefCalibration(0x40)) return false;
++    Write8(SYSTEM_SEQUENCE_CONFIG, 0x02);
++    if (!PerformSingleRefCalibration(0x00)) return false;
++    Write8(SYSTEM_SEQUENCE_CONFIG, 0xE8);
++    return ok_;
++}
++
++bool TofSensor::StartContinuous(uint32_t period_ms) {
++    Write8(0x80, 0x01);
++    Write8(0xFF, 0x01);
++    Write8(0x00, 0x00);
++    Write8(0x91, stop_variable_);
++    Write8(0x00, 0x01);
++    Write8(0xFF, 0x00);
++    Write8(0x80, 0x00);
++    uint16_t osc = 0;
++    Read16(OSC_CALIBRATE_VAL, &osc);
++    if (osc != 0) period_ms *= osc;
++    Write32(SYSTEM_INTERMEASUREMENT_PERIOD, period_ms);
++    Write8(SYSRANGE_START, 0x04);  // timed continuous mode
++    return ok_;
++}
++
++bool TofSensor::ReadIfReady(uint16_t* mm) {
++    uint8_t st = 0;
++    if (!Read8(RESULT_INTERRUPT_STATUS, &st) || (st & 0x07) == 0) return false;
++    // RESULT_RANGE_STATUS + 10 holds the range in mm (big endian)
++    uint8_t rs = 0;
++    Read8(RESULT_RANGE_STATUS, &rs);
++    last_status_ = (rs >> 3) & 0x0F;  // 11 = valid, others = sigma/signal/phase fail
++    bool r = Read16(RESULT_RANGE_STATUS + 10, mm);
++    Write8(SYSTEM_INTERRUPT_CLEAR, 0x01);
++    return r;
++}
++
++// ---------------------------------------------------------------------------
++// Polling + "hand close" detector with hysteresis
++// ---------------------------------------------------------------------------
++bool TofSensor::Restart() {
++    if (xshut_ != GPIO_NUM_NC) {  // hard reset: clears a sensor stuck in standby
++        gpio_set_level(xshut_, 0);
++        vTaskDelay(pdMS_TO_TICKS(10));
++        gpio_set_level(xshut_, 1);
++        vTaskDelay(pdMS_TO_TICKS(10));
++    }
++    return Init() && StartContinuous(TOF_PERIOD_MS);
++}
++
++void TofSensor::Loop() {
++    bool ready = false;
++    for (int attempt = 1; attempt <= 3 && !ready; ++attempt) {
++        if (bus_ == nullptr && !InitBus()) break;
++        if (dev_ == nullptr) break;
++        ready = Init() && StartContinuous(TOF_PERIOD_MS);
++        if (!ready) {
++            ESP_LOGW(TAG, "VL53L0X init failed (attempt %d)", attempt);
++            vTaskDelay(pdMS_TO_TICKS(200));
++        }
++    }
++    if (!ready) {
++        ESP_LOGE(TAG, "ToF disabled");
++        task_ = nullptr;
++        vTaskDelete(nullptr);
++        return;
++    }
++    ESP_LOGI(TAG, "VL53L0X ready, near < %d mm triggers listening", TOF_NEAR_MM);
++
++    int near_count = 0, far_count = 0;
++    bool armed = true;
++    // Empty-scene baseline (slow average). This module reads ~79 mm with nothing
++    // in front (offset / cover crosstalk), so a fixed 50 mm threshold is too
++    // strict: trigger on a clear drop below the baseline, clamped to 50..70 mm.
++    float baseline = -1.0f;
++    int64_t now = esp_timer_get_time() / 1000;
++    int64_t last_log_ms = 0, last_trigger_ms = 0, last_sample_ms = now;
++    while (true) {
++        vTaskDelay(pdMS_TO_TICKS(TOF_PERIOD_MS / 2));
++        now = esp_timer_get_time() / 1000;
++        uint16_t mm = 0;
++        ok_ = true;
++        if (!ReadIfReady(&mm)) {
++            // No new sample for too long (sensor reset by a glitch and sitting in
++            // standby, or I2C errors): hard reset and re-initialise.
++            if (now - last_sample_ms > TOF_STALL_MS) {
++                ESP_LOGW(TAG, "no sample for %d ms (%s), restarting sensor",
++                         (int)(now - last_sample_ms), ok_ ? "stalled" : "I2C error");
++                bool restarted = Restart();
++                ESP_LOGI(TAG, "restart %s", restarted ? "ok" : "failed");
++                last_sample_ms = esp_timer_get_time() / 1000;
++                if (!restarted) vTaskDelay(pdMS_TO_TICKS(1000));
++            }
++            continue;
++        }
++        last_sample_ms = now;
++        // 8190/8191 = no target. Touching the cover glass reads 0..20 mm,
++        // which is "near" too.
++        int d = mm >= 8190 ? 9999 : mm;
++        last_mm_ = d;
++
++        int threshold = TOF_NEAR_MAX_MM;
++        if (baseline > 0) {
++            threshold = (int)baseline - TOF_DROP_MM;
++            if (threshold < TOF_NEAR_MM) threshold = TOF_NEAR_MM;
++            if (threshold > TOF_NEAR_MAX_MM) threshold = TOF_NEAR_MAX_MM;
++        }
++        bool near = d < threshold;
++
++        if (now - last_log_ms > (near ? 200 : 5000)) {
++            last_log_ms = now;
++            ESP_LOGI(TAG, "distance %d mm, baseline %d, threshold %d (status %u)", d,
++                     (int)baseline, threshold, last_status_);
++        }
++
++        if (near) {
++            far_count = 0;
++            if (armed && ++near_count >= TOF_NEAR_SAMPLES &&
++                now - last_trigger_ms > TOF_COOLDOWN_MS) {
++                armed = false;
++                near_count = 0;
++                last_trigger_ms = now;
++                ESP_LOGI(TAG, "hand detected at %d mm", d);
++                if (on_near_) on_near_(d);
++            }
++        } else {
++            near_count = 0;
++            if (armed) {
++                float v = d > 2000 ? 2000.0f : (float)d;  // "no target" counts as far
++                baseline = baseline < 0 ? v : baseline + (v - baseline) / 32.0f;
++            } else if (d > threshold + TOF_REARM_MARGIN_MM && ++far_count >= TOF_REARM_SAMPLES) {
++                armed = true;
++            }
++        }
++    }
++}
+diff --git a/main/boards/esp32s3-weact-dog/tof_sensor.h b/main/boards/esp32s3-weact-dog/tof_sensor.h
+new file mode 100644
+index 0000000..f1c3646
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/tof_sensor.h
+@@ -0,0 +1,55 @@
++// TofSensor: minimal VL53L0X driver (I2C master, continuous ranging) plus a
++// "hand close" detector. Init/tuning sequence follows the Pololu VL53L0X
++// Arduino library (itself derived from the ST API). I2C errors never abort:
++// if the sensor is missing the task just logs and exits.
++#pragma once
++
++#include <driver/gpio.h>
++#include <driver/i2c_master.h>
++#include <freertos/FreeRTOS.h>
++#include <freertos/task.h>
++
++#include <cstdint>
++#include <functional>
++
++class TofSensor {
++public:
++    using NearCallback = std::function<void(int distance_mm)>;
++
++    TofSensor(gpio_num_t sda, gpio_num_t scl, gpio_num_t xshut);
++    // Creates the polling task. `on_near` runs in that task.
++    void Start(NearCallback on_near);
++    int last_distance_mm() const { return last_mm_; }
++
++private:
++    static void TaskEntry(void* arg);
++    void Loop();
++
++    bool Init();
++    bool InitBus();
++    bool GetSpadInfo(uint8_t* count, bool* type_is_aperture);
++    bool PerformSingleRefCalibration(uint8_t vhv_init_byte);
++    bool StartContinuous(uint32_t period_ms);
++    bool Restart();  // XSHUT reset + Init + StartContinuous
++    // Returns true when a new sample was read into *mm.
++    bool ReadIfReady(uint16_t* mm);
++
++    bool Write8(uint8_t reg, uint8_t value);
++    bool Write16(uint8_t reg, uint16_t value);
++    bool Write32(uint8_t reg, uint32_t value);
++    bool WriteMulti(uint8_t reg, const uint8_t* src, size_t count);
++    bool Read8(uint8_t reg, uint8_t* value);
++    bool Read16(uint8_t reg, uint16_t* value);
++    bool ReadMulti(uint8_t reg, uint8_t* dst, size_t count);
++    bool WaitFor(uint8_t reg, uint8_t mask, bool want_nonzero, int timeout_ms);
++
++    gpio_num_t sda_, scl_, xshut_;
++    i2c_master_bus_handle_t bus_ = nullptr;
++    i2c_master_dev_handle_t dev_ = nullptr;
++    uint8_t stop_variable_ = 0;
++    bool ok_ = true;  // sticky I2C error flag during init
++    volatile int last_mm_ = -1;
++    uint8_t last_status_ = 0;
++    NearCallback on_near_;
++    TaskHandle_t task_ = nullptr;
++};
+diff --git a/main/boards/esp32s3-weact-dog/weact_dog_board.cc b/main/boards/esp32s3-weact-dog/weact_dog_board.cc
+index e58547c..5bbef18 100644
+--- a/main/boards/esp32s3-weact-dog/weact_dog_board.cc
++++ b/main/boards/esp32s3-weact-dog/weact_dog_board.cc
+@@ -1,6 +1,8 @@
+ // XIAOZHI dog robot on a WeAct ESP32-S3 CoreBoard N16R8:
+-// ILI9341 eyes, INMP441 mic, I2S amp, 4 servo legs.
++// ILI9341 eyes, INMP441 mic + PCM5100A DAC on one full-duplex I2S bus.
++// The 4 servo legs are disabled (pins held LOW).
+ #include <driver/gpio.h>
++#include <driver/i2s_std.h>
+ #include <driver/spi_common.h>
+ #include <esp_lcd_ili9341.h>
+ #include <esp_lcd_panel_io.h>
+@@ -17,34 +19,70 @@
+ #include "dog_config.h"
+ #include "eyes_display.h"
+ #include "led/single_led.h"
+-#include "leg_servos.h"
++#include "tof_sensor.h"
+ #include "wifi_board.h"
+ 
+ #define TAG "WeactDogBoard"
+ 
+-// NoAudioCodecSimplex + amp SD (mute) pin + conservative default volume.
+-class DogAudioCodec : public NoAudioCodecSimplex {
++// INMP441 + PCM5100A share BCLK/WS: one I2S port, TX and RX at the same rate,
++// 32-bit slots (INMP441 needs 64 BCLK per frame). Unlike NoAudioCodecDuplex the
++// speaker side sends the mono stream to both slots (PCM5100A L+R outputs).
++class DogAudioCodec : public NoAudioCodec {
+ public:
+-    DogAudioCodec()
+-        : NoAudioCodecSimplex(AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE, PIN_AMP_BCLK,
+-                              PIN_AMP_LRC, PIN_AMP_DIN,
+-                              AUDIO_SPK_STEREO_DUP ? I2S_STD_SLOT_BOTH : I2S_STD_SLOT_LEFT,
+-                              PIN_MIC_SCK, PIN_MIC_WS, PIN_MIC_SD, I2S_STD_SLOT_LEFT) {
++    DogAudioCodec() {
++        duplex_ = true;
++        input_sample_rate_ = AUDIO_INPUT_SAMPLE_RATE;
++        output_sample_rate_ = AUDIO_OUTPUT_SAMPLE_RATE;
+         output_volume_ = AUDIO_DEFAULT_OUTPUT_VOLUME;  // NVS value wins if the user changed it
+-        if (PIN_AMP_SD != GPIO_NUM_NC) {
+-            gpio_config_t io = {};
+-            io.pin_bit_mask = 1ULL << PIN_AMP_SD;
+-            io.mode = GPIO_MODE_OUTPUT;
+-            gpio_config(&io);
+-            gpio_set_level(PIN_AMP_SD, 0);  // muted until output is enabled
+-        }
+-    }
+ 
+-protected:
+-    void EnableOutput(bool enable) override {
+-        if (PIN_AMP_SD != GPIO_NUM_NC && !enable) gpio_set_level(PIN_AMP_SD, 0);
+-        NoAudioCodecSimplex::EnableOutput(enable);
+-        if (PIN_AMP_SD != GPIO_NUM_NC && enable) gpio_set_level(PIN_AMP_SD, 1);
++        i2s_chan_config_t chan_cfg = {
++            .id = XIAOZHI_I2S_PORT(0),
++            .role = I2S_ROLE_MASTER,
++            .dma_desc_num = AUDIO_CODEC_DMA_DESC_NUM,
++            .dma_frame_num = AUDIO_CODEC_DMA_FRAME_NUM,
++            .auto_clear_after_cb = true,
++            .auto_clear_before_cb = false,
++            .intr_priority = 0,
++        };
++        ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &tx_handle_, &rx_handle_));
++
++        i2s_std_config_t std_cfg = {
++            .clk_cfg = {
++                .sample_rate_hz = (uint32_t)AUDIO_OUTPUT_SAMPLE_RATE,
++                .clk_src = I2S_CLK_SRC_DEFAULT,
++                .ext_clk_freq_hz = 0,
++                .mclk_multiple = I2S_MCLK_MULTIPLE_256,
++            },
++            .slot_cfg = {
++                .data_bit_width = I2S_DATA_BIT_WIDTH_32BIT,
++                .slot_bit_width = I2S_SLOT_BIT_WIDTH_AUTO,
++                .slot_mode = I2S_SLOT_MODE_MONO,
++                .slot_mask = I2S_STD_SLOT_BOTH,  // speaker: same sample on L and R
++                .ws_width = I2S_DATA_BIT_WIDTH_32BIT,
++                .ws_pol = false,
++                .bit_shift = true,
++                .left_align = true,
++                .big_endian = false,
++                .bit_order_lsb = false,
++            },
++            .gpio_cfg = {
++                .mclk = I2S_GPIO_UNUSED,  // PCM5100A uses its internal PLL (MC -> GND)
++                .bclk = PIN_I2S_BCLK,
++                .ws = PIN_I2S_WS,
++                .dout = PIN_I2S_DOUT,
++                .din = PIN_I2S_DIN,
++                .invert_flags = {
++                    .mclk_inv = false,
++                    .bclk_inv = false,
++                    .ws_inv = false,
++                },
++            },
++        };
++        ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_handle_, &std_cfg));
++        std_cfg.slot_cfg.slot_mask = I2S_STD_SLOT_LEFT;  // mic: INMP441 L/R -> GND
++        ESP_ERROR_CHECK(i2s_channel_init_std_mode(rx_handle_, &std_cfg));
++        ESP_LOGI(TAG, "Full-duplex I2S: BCLK %d, WS %d, DIN %d, DOUT %d @ %d Hz", PIN_I2S_BCLK,
++                 PIN_I2S_WS, PIN_I2S_DIN, PIN_I2S_DOUT, AUDIO_OUTPUT_SAMPLE_RATE);
+     }
+ };
+ 
+@@ -52,8 +90,21 @@ class WeactDogBoard : public WifiBoard {
+ private:
+     Button boot_button_;
+     EyesDisplay* display_ = nullptr;
+-    LegServos legs_;
+     DogBehavior* behavior_ = nullptr;
++    TofSensor tof_{PIN_I2C_SDA, PIN_I2C_SCL, PIN_TOF_XSHUT};
++
++    // Hand closer than 5 cm in front of the ToF = same as a BOOT click:
++    // Idle -> open the channel and listen; Speaking -> interrupt and listen.
++    void InitializeTof() {
++        tof_.Start([](int distance_mm) {
++            auto& app = Application::GetInstance();
++            DeviceState state = app.GetDeviceState();
++            if (state == kDeviceStateIdle || state == kDeviceStateSpeaking) {
++                ESP_LOGI(TAG, "ToF %d mm -> listen", distance_mm);
++                app.ToggleChatState();
++            }
++        });
++    }
+ 
+     static void LogResetReason() {
+         const char* name = "unknown";
+@@ -65,7 +116,7 @@ private:
+             case ESP_RST_TASK_WDT: name = "task watchdog"; break;
+             case ESP_RST_WDT: name = "other watchdog"; break;
+             case ESP_RST_DEEPSLEEP: name = "deep sleep"; break;
+-            case ESP_RST_BROWNOUT: name = "BROWNOUT (check battery/boost/servo current)"; break;
++            case ESP_RST_BROWNOUT: name = "BROWNOUT (check USB cable / power supply)"; break;
+             case ESP_RST_USB: name = "usb"; break;
+             case ESP_RST_EXT: name = "external pin"; break;
+             default: break;
+@@ -77,6 +128,22 @@ private:
+         }
+     }
+ 
++    // Legs are disabled: drive the servo signal lines LOW so the servos get no
++    // pulses (no twitching, no current spikes that disturb Wi-Fi).
++    static void ParkServoPins() {
++        gpio_config_t io = {};
++        io.pin_bit_mask = (1ULL << PIN_SERVO_FL) | (1ULL << PIN_SERVO_FR) |
++                          (1ULL << PIN_SERVO_RL) | (1ULL << PIN_SERVO_RR);
++        io.mode = GPIO_MODE_OUTPUT;
++        io.pull_up_en = GPIO_PULLUP_DISABLE;
++        io.pull_down_en = GPIO_PULLDOWN_DISABLE;
++        gpio_config(&io);
++        gpio_set_level(PIN_SERVO_FL, 0);
++        gpio_set_level(PIN_SERVO_FR, 0);
++        gpio_set_level(PIN_SERVO_RL, 0);
++        gpio_set_level(PIN_SERVO_RR, 0);
++    }
++
+     void InitializeSpi() {
+         spi_bus_config_t buscfg = {};
+         buscfg.mosi_io_num = PIN_TFT_MOSI;
+@@ -132,15 +199,24 @@ private:
+ public:
+     WeactDogBoard() : boot_button_(BOOT_BUTTON_GPIO) {
+         LogResetReason();
++        ParkServoPins();
+         InitializeSpi();
+         InitializeDisplay();
+         InitializeButtons();
+ #ifdef CONFIG_DOG_EYES_DEBUG_CYCLE
+-        display_->StartDebugCycle(2500);  // M2 bench test: cycle moods
++        display_->StartDebugCycle(2500);  // bench test: cycle moods
+ #endif
+-        legs_.Begin();  // task only; servos attach after Wi-Fi + audio are up
+-        behavior_ = new DogBehavior(display_, &legs_);
++        behavior_ = new DogBehavior(display_);
+         behavior_->Start();
++        InitializeTof();
++    }
++
++    // USB powered desk robot: keep the radio fully awake. Modem sleep between
++    // DTIM beacons adds latency/jitter to the voice stream and makes some
++    // routers drop the station, which is the main cause of disconnects.
++    void SetPowerSaveLevel(PowerSaveLevel level) override {
++        (void)level;
++        WifiBoard::SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
+     }
+ 
+     Led* GetLed() override {
+-- 
+2.44.0.windows.1
+

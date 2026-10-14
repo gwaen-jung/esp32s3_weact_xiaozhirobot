@@ -46,9 +46,9 @@
   [  GND  ] --------------> Audio GND chung với ESP32
 
   ============================ 4 CHÂN ROBOT (SERVOS) ============================
-  [GPIO 6 ] --------------> Servo Chân Trước Trái (Front-Left - FL)
-  [GPIO 7 ] --------------> Servo Chân Trước Phải (Front-Right - FR)
-  [GPIO 4 ] --------------> Servo Chân Sau Trái   (Rear-Left - RL)
+  [GPIO 7 ] --------------> Servo Chân Trước Trái (Front-Left - FL)
+  [GPIO 4 ] --------------> Servo Chân Trước Phải (Front-Right - FR, servo 360°)
+  [GPIO 6 ] --------------> Servo Chân Sau Trái   (Rear-Left - RL)
   [GPIO 5 ] --------------> Servo Chân Sau Phải   (Rear-Right - RR)
   [ 5.0V  ] --------------> Nguồn 5V công suất riêng cho Servo (Khuyên dùng nguồn ngoài / pin)
   [  GND  ] --------------> GND chung với ESP32
@@ -69,7 +69,7 @@
    - Hiển thị HUD Dashboard, vẽ biểu tượng mắt RoboEyes và đồng hồ đo góc servo.
 
 2. **Microphone INMP441**:
-   - Khởi tạo I2S kênh chuẩn 16kHz, 32-bit (chuyển đổi 16-bit PCM).
+   - Khởi tạo I2S 16kHz, slot 32-bit (INMP441 cần 64 xung SCK/khung), dịch về 16-bit PCM.
    - Đọc mẫu âm thanh chính xác, đo được biên độ âm thanh môi trường và tiếng gõ/nói.
 
 3. **Loa PCM5100A**:
@@ -78,7 +78,7 @@
    - Phát âm thanh tần số âm mẫu chuẩn 440Hz, 523Hz, 880Hz trong trẻo, to rõ.
 
 4. **Hệ thống Servo 4 chân**:
-   - Đảo thành công vị trí: 2 chân trước = GPIO 6, 7; 2 chân sau = GPIO 4, 5.
+   - Vị trí chốt cuối: FL = GPIO 7, FR = GPIO 4 (servo 360°), RL = GPIO 6, RR = GPIO 5.
    - Đã kiểm tra xoay đồng loạt các góc 45°, 90°, 135° và quét mượt (sweep) với thuật toán tăng giảm tốc Cosine.
    - *Phát hiện*: 2 servo bị lỗi cơ khí phần cứng, cần lưu ý thay thế khi lắp ráp hoàn chỉnh.
 

@@ -23,8 +23,8 @@ Dự án phát triển robot trợ lý AI thông minh dạng chó để bàn (De
    - Đã đo và hiển thị biên độ âm thanh giọng nói / vỗ tay trực tiếp lên màn hình.
 4. ⚠️ **Hệ thống 4 Động cơ Chân (Servos)**: 4x Micro Servo SG90 / MG90S
    - Đã cấu hình và test đảo chân theo đúng vị trí cơ khí:
-     - **Hai chân trước**: FL = `GPIO 6`, FR = `GPIO 7`
-     - **Hai chân sau**: RL = `GPIO 4`, RR = `GPIO 5`
+     - **Hai chân trước**: FL = `GPIO 7`, FR = `GPIO 4` (**servo 360°**, chỉ giữ điểm dừng)
+     - **Hai chân sau**: RL = `GPIO 6`, RR = `GPIO 5`
    - Đã lập trình thuật toán điều khiển mượt mà tăng/giảm tốc Cosine S-Curve (các tư thế Stand, Sit, Wave, Crouch, Sweep).
    - **Ghi chú phần cứng**: Phát hiện 2 servo bị kẹt cơ học / hỏng nhông, cần thay thế trong đợt lắp ráp tiếp theo.
 
@@ -36,10 +36,10 @@ Dự án phát triển robot trợ lý AI thông minh dạng chó để bàn (De
                             ┌───────────────────┐
                       3.3V ─┤ 3V3           GND ├─ GND
                        EN  ─┤ EN             44 ├─ (UART0 RX)
-          SERVO_RL (Sau-Tr) ─┤ 4              43 ├─ (UART0 TX)
+     SERVO_FR (Tr-Ph,360) ─┤ 4              43 ├─ (UART0 TX)
           SERVO_RR (Sau-Ph) ─┤ 5              42 ├─ (Reserved / TFT MISO)
-          SERVO_FL (Tr-Tr)  ─┤ 6              41 ├─ TFT_MOSI / SDI
-          SERVO_FR (Tr-Ph)  ─┤ 7              40 ├─ TFT_SCLK / SCK
+          SERVO_RL (Sau-Tr) ─┤ 6              41 ├─ TFT_MOSI / SDI
+          SERVO_FL (Tr-Tr)  ─┤ 7              40 ├─ TFT_SCLK / SCK
         I2C_SDA (Laser/IMU) ─┤ 8              39 ├─ TFT_CS
         I2C_SCL (Laser/IMU) ─┤ 9              38 ├─ TFT_DC / RS
                    (Free)  ─┤ 10             37 ├─ (PSRAM OPI - CẤM DÙNG)
@@ -78,11 +78,11 @@ Dự án phát triển robot trợ lý AI thông minh dạng chó để bàn (De
 | | | MC | **GND** | **NỐI GND ĐỂ BẬT INTERNAL PLL** |
 | | | SD | **3.3V / VCC** | Unmute DAC |
 | | | VCC / GND | **5V / GND** | Nguồn công suất loa |
-| **4 Chân Servos** | **SG90 / MG90S** | FL Signal | **GPIO 6** | Chân trước bên trái |
-| | | FR Signal | **GPIO 7** | Chân trước bên phải |
-| | | RL Signal | **GPIO 4** | Chân sau bên trái |
+| **4 Chân Servos** | **SG90 / MG90S** | FL Signal | **GPIO 7** | Chân trước bên trái |
+| | | FR Signal | **GPIO 4** | Chân trước bên phải (servo 360°) |
+| | | RL Signal | **GPIO 6** | Chân sau bên trái |
 | | | RR Signal | **GPIO 5** | Chân sau bên phải |
-| | | VCC / GND | **5V Nguồn ngoài / GND** | Mass chung với ESP32 |
+| | | VCC / GND | **5V Nguồn ngoài ≥ 3A / GND** | Mass chung với ESP32 |
 | **Cảm biến (Dự kiến)**| **VL53L0X & MPU6050** | SDA | **GPIO 8** | I2C Data chung |
 | | | SCL | **GPIO 9** | I2C Clock chung |
 | | | VCC / GND | **3.3V / GND** | Nguồn cảm biến |

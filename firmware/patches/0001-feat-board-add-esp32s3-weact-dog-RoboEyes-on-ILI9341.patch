@@ -1,0 +1,3697 @@
+From dc938965642c996d092c4ec5140112fd28a9c0e8 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ho=C3=A0?= <huyhoa308@gmail.com>
+Date: Sun, 11 Oct 2026 10:25:58 +0000
+Subject: [PATCH 1/3] feat(board): add esp32s3-weact-dog (RoboEyes on ILI9341,
+ INMP441 + I2S amp, 4 servo legs)
+
+- EyesDisplay: RoboEyes port drawing into a PSRAM RGB565 canvas, dirty-box DMA push
+- LegServos: staggered, slew-limited, auto-detaching symbolic leg motions
+- DogBehavior: state/emotion tables driving eyes and legs
+- DogAudioCodec: simplex I2S with amp SD pin and conservative default volume
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011zeGQ7CYtkKwrDgf89CB3X
+---
+ main/CMakeLists.txt                           |   5 +
+ main/Kconfig.projbuild                        |  10 +
+ .../esp32s3-weact-dog/LICENSE-RoboEyes.txt    | 674 ++++++++++++++++
+ main/boards/esp32s3-weact-dog/README.md       | 110 +++
+ main/boards/esp32s3-weact-dog/board_pins.h    |  43 +
+ main/boards/esp32s3-weact-dog/config.h        |  30 +
+ main/boards/esp32s3-weact-dog/config.json     |  10 +
+ main/boards/esp32s3-weact-dog/dog_behavior.cc | 185 +++++
+ main/boards/esp32s3-weact-dog/dog_behavior.h  |  46 ++
+ main/boards/esp32s3-weact-dog/dog_config.h    |  80 ++
+ main/boards/esp32s3-weact-dog/eyes_display.cc | 372 +++++++++
+ main/boards/esp32s3-weact-dog/eyes_display.h  | 103 +++
+ main/boards/esp32s3-weact-dog/font_8x16.h     | 240 ++++++
+ main/boards/esp32s3-weact-dog/leg_servos.cc   | 262 ++++++
+ main/boards/esp32s3-weact-dog/leg_servos.h    |  78 ++
+ .../boards/esp32s3-weact-dog/rgb565_canvas.cc | 238 ++++++
+ main/boards/esp32s3-weact-dog/rgb565_canvas.h |  61 ++
+ main/boards/esp32s3-weact-dog/roboeyes_port.h | 751 ++++++++++++++++++
+ .../esp32s3-weact-dog/tools/gen_font_8x16.py  |  49 ++
+ .../esp32s3-weact-dog/weact_dog_board.cc      | 159 ++++
+ 20 files changed, 3506 insertions(+)
+ create mode 100644 main/boards/esp32s3-weact-dog/LICENSE-RoboEyes.txt
+ create mode 100644 main/boards/esp32s3-weact-dog/README.md
+ create mode 100644 main/boards/esp32s3-weact-dog/board_pins.h
+ create mode 100644 main/boards/esp32s3-weact-dog/config.h
+ create mode 100644 main/boards/esp32s3-weact-dog/config.json
+ create mode 100644 main/boards/esp32s3-weact-dog/dog_behavior.cc
+ create mode 100644 main/boards/esp32s3-weact-dog/dog_behavior.h
+ create mode 100644 main/boards/esp32s3-weact-dog/dog_config.h
+ create mode 100644 main/boards/esp32s3-weact-dog/eyes_display.cc
+ create mode 100644 main/boards/esp32s3-weact-dog/eyes_display.h
+ create mode 100644 main/boards/esp32s3-weact-dog/font_8x16.h
+ create mode 100644 main/boards/esp32s3-weact-dog/leg_servos.cc
+ create mode 100644 main/boards/esp32s3-weact-dog/leg_servos.h
+ create mode 100644 main/boards/esp32s3-weact-dog/rgb565_canvas.cc
+ create mode 100644 main/boards/esp32s3-weact-dog/rgb565_canvas.h
+ create mode 100644 main/boards/esp32s3-weact-dog/roboeyes_port.h
+ create mode 100644 main/boards/esp32s3-weact-dog/tools/gen_font_8x16.py
+ create mode 100644 main/boards/esp32s3-weact-dog/weact_dog_board.cc
+
+diff --git a/main/CMakeLists.txt b/main/CMakeLists.txt
+index 0960932..87de004 100644
+--- a/main/CMakeLists.txt
++++ b/main/CMakeLists.txt
+@@ -804,6 +804,11 @@ elseif(CONFIG_BOARD_TYPE_OTTO_ROBOT)
+     set(BUILTIN_TEXT_FONT font_noto_sans_basic_16_4)
+     set(BUILTIN_ICON_FONT font_material_symbols_16_4)
+     set(DEFAULT_EMOJI_COLLECTION otto-gif)
++elseif(CONFIG_BOARD_TYPE_ESP32S3_WEACT_DOG)
++    set(BOARD_DIR "esp32s3-weact-dog")
++    set(BUILTIN_TEXT_FONT font_noto_sans_basic_16_4)
++    set(BUILTIN_ICON_FONT font_material_symbols_16_4)
++    set(DEFAULT_EMOJI_COLLECTION noto-color-emoji_32)
+ elseif(CONFIG_BOARD_TYPE_ELECTRON_BOT)
+     set(BOARD_DIR "electron-bot")
+     set(BUILTIN_TEXT_FONT font_noto_sans_basic_20_4)
+diff --git a/main/Kconfig.projbuild b/main/Kconfig.projbuild
+index 3295c8f..288125d 100644
+--- a/main/Kconfig.projbuild
++++ b/main/Kconfig.projbuild
+@@ -605,6 +605,9 @@ choice BOARD_TYPE
+     config BOARD_TYPE_WDMOMO_CGC_144
+         bool "WDMomo ESP32-CGC-144"
+         depends on IDF_TARGET_ESP32
++    config BOARD_TYPE_ESP32S3_WEACT_DOG
++        bool "WeAct ESP32-S3 XIAOZHI Dog Robot"
++        depends on IDF_TARGET_ESP32S3
+     config BOARD_TYPE_WK_ESP32S3_DEV
+         bool "WK ESP32-S3 Dev Board (维控智能开发板)"
+         depends on IDF_TARGET_ESP32S3
+@@ -1156,3 +1159,10 @@ menu "TAIJIPAI_S3_CONFIG"
+ endmenu
+ 
+ endmenu
++
++config DOG_EYES_DEBUG_CYCLE
++    bool "XIAOZHI Dog: cycle eye moods on a debug timer (bench test)"
++    depends on BOARD_TYPE_ESP32S3_WEACT_DOG
++    default n
++    help
++        Cycles all eye presets every 2.5 s and logs the measured frame rate.
+diff --git a/main/boards/esp32s3-weact-dog/LICENSE-RoboEyes.txt b/main/boards/esp32s3-weact-dog/LICENSE-RoboEyes.txt
+new file mode 100644
+index 0000000..f288702
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/LICENSE-RoboEyes.txt
+@@ -0,0 +1,674 @@
++                    GNU GENERAL PUBLIC LICENSE
++                       Version 3, 29 June 2007
++
++ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
++ Everyone is permitted to copy and distribute verbatim copies
++ of this license document, but changing it is not allowed.
++
++                            Preamble
++
++  The GNU General Public License is a free, copyleft license for
++software and other kinds of works.
++
++  The licenses for most software and other practical works are designed
++to take away your freedom to share and change the works.  By contrast,
++the GNU General Public License is intended to guarantee your freedom to
++share and change all versions of a program--to make sure it remains free
++software for all its users.  We, the Free Software Foundation, use the
++GNU General Public License for most of our software; it applies also to
++any other work released this way by its authors.  You can apply it to
++your programs, too.
++
++  When we speak of free software, we are referring to freedom, not
++price.  Our General Public Licenses are designed to make sure that you
++have the freedom to distribute copies of free software (and charge for
++them if you wish), that you receive source code or can get it if you
++want it, that you can change the software or use pieces of it in new
++free programs, and that you know you can do these things.
++
++  To protect your rights, we need to prevent others from denying you
++these rights or asking you to surrender the rights.  Therefore, you have
++certain responsibilities if you distribute copies of the software, or if
++you modify it: responsibilities to respect the freedom of others.
++
++  For example, if you distribute copies of such a program, whether
++gratis or for a fee, you must pass on to the recipients the same
++freedoms that you received.  You must make sure that they, too, receive
++or can get the source code.  And you must show them these terms so they
++know their rights.
++
++  Developers that use the GNU GPL protect your rights with two steps:
++(1) assert copyright on the software, and (2) offer you this License
++giving you legal permission to copy, distribute and/or modify it.
++
++  For the developers' and authors' protection, the GPL clearly explains
++that there is no warranty for this free software.  For both users' and
++authors' sake, the GPL requires that modified versions be marked as
++changed, so that their problems will not be attributed erroneously to
++authors of previous versions.
++
++  Some devices are designed to deny users access to install or run
++modified versions of the software inside them, although the manufacturer
++can do so.  This is fundamentally incompatible with the aim of
++protecting users' freedom to change the software.  The systematic
++pattern of such abuse occurs in the area of products for individuals to
++use, which is precisely where it is most unacceptable.  Therefore, we
++have designed this version of the GPL to prohibit the practice for those
++products.  If such problems arise substantially in other domains, we
++stand ready to extend this provision to those domains in future versions
++of the GPL, as needed to protect the freedom of users.
++
++  Finally, every program is threatened constantly by software patents.
++States should not allow patents to restrict development and use of
++software on general-purpose computers, but in those that do, we wish to
++avoid the special danger that patents applied to a free program could
++make it effectively proprietary.  To prevent this, the GPL assures that
++patents cannot be used to render the program non-free.
++
++  The precise terms and conditions for copying, distribution and
++modification follow.
++
++                       TERMS AND CONDITIONS
++
++  0. Definitions.
++
++  "This License" refers to version 3 of the GNU General Public License.
++
++  "Copyright" also means copyright-like laws that apply to other kinds of
++works, such as semiconductor masks.
++
++  "The Program" refers to any copyrightable work licensed under this
++License.  Each licensee is addressed as "you".  "Licensees" and
++"recipients" may be individuals or organizations.
++
++  To "modify" a work means to copy from or adapt all or part of the work
++in a fashion requiring copyright permission, other than the making of an
++exact copy.  The resulting work is called a "modified version" of the
++earlier work or a work "based on" the earlier work.
++
++  A "covered work" means either the unmodified Program or a work based
++on the Program.
++
++  To "propagate" a work means to do anything with it that, without
++permission, would make you directly or secondarily liable for
++infringement under applicable copyright law, except executing it on a
++computer or modifying a private copy.  Propagation includes copying,
++distribution (with or without modification), making available to the
++public, and in some countries other activities as well.
++
++  To "convey" a work means any kind of propagation that enables other
++parties to make or receive copies.  Mere interaction with a user through
++a computer network, with no transfer of a copy, is not conveying.
++
++  An interactive user interface displays "Appropriate Legal Notices"
++to the extent that it includes a convenient and prominently visible
++feature that (1) displays an appropriate copyright notice, and (2)
++tells the user that there is no warranty for the work (except to the
++extent that warranties are provided), that licensees may convey the
++work under this License, and how to view a copy of this License.  If
++the interface presents a list of user commands or options, such as a
++menu, a prominent item in the list meets this criterion.
++
++  1. Source Code.
++
++  The "source code" for a work means the preferred form of the work
++for making modifications to it.  "Object code" means any non-source
++form of a work.
++
++  A "Standard Interface" means an interface that either is an official
++standard defined by a recognized standards body, or, in the case of
++interfaces specified for a particular programming language, one that
++is widely used among developers working in that language.
++
++  The "System Libraries" of an executable work include anything, other
++than the work as a whole, that (a) is included in the normal form of
++packaging a Major Component, but which is not part of that Major
++Component, and (b) serves only to enable use of the work with that
++Major Component, or to implement a Standard Interface for which an
++implementation is available to the public in source code form.  A
++"Major Component", in this context, means a major essential component
++(kernel, window system, and so on) of the specific operating system
++(if any) on which the executable work runs, or a compiler used to
++produce the work, or an object code interpreter used to run it.
++
++  The "Corresponding Source" for a work in object code form means all
++the source code needed to generate, install, and (for an executable
++work) run the object code and to modify the work, including scripts to
++control those activities.  However, it does not include the work's
++System Libraries, or general-purpose tools or generally available free
++programs which are used unmodified in performing those activities but
++which are not part of the work.  For example, Corresponding Source
++includes interface definition files associated with source files for
++the work, and the source code for shared libraries and dynamically
++linked subprograms that the work is specifically designed to require,
++such as by intimate data communication or control flow between those
++subprograms and other parts of the work.
++
++  The Corresponding Source need not include anything that users
++can regenerate automatically from other parts of the Corresponding
++Source.
++
++  The Corresponding Source for a work in source code form is that
++same work.
++
++  2. Basic Permissions.
++
++  All rights granted under this License are granted for the term of
++copyright on the Program, and are irrevocable provided the stated
++conditions are met.  This License explicitly affirms your unlimited
++permission to run the unmodified Program.  The output from running a
++covered work is covered by this License only if the output, given its
++content, constitutes a covered work.  This License acknowledges your
++rights of fair use or other equivalent, as provided by copyright law.
++
++  You may make, run and propagate covered works that you do not
++convey, without conditions so long as your license otherwise remains
++in force.  You may convey covered works to others for the sole purpose
++of having them make modifications exclusively for you, or provide you
++with facilities for running those works, provided that you comply with
++the terms of this License in conveying all material for which you do
++not control copyright.  Those thus making or running the covered works
++for you must do so exclusively on your behalf, under your direction
++and control, on terms that prohibit them from making any copies of
++your copyrighted material outside their relationship with you.
++
++  Conveying under any other circumstances is permitted solely under
++the conditions stated below.  Sublicensing is not allowed; section 10
++makes it unnecessary.
++
++  3. Protecting Users' Legal Rights From Anti-Circumvention Law.
++
++  No covered work shall be deemed part of an effective technological
++measure under any applicable law fulfilling obligations under article
++11 of the WIPO copyright treaty adopted on 20 December 1996, or
++similar laws prohibiting or restricting circumvention of such
++measures.
++
++  When you convey a covered work, you waive any legal power to forbid
++circumvention of technological measures to the extent such circumvention
++is effected by exercising rights under this License with respect to
++the covered work, and you disclaim any intention to limit operation or
++modification of the work as a means of enforcing, against the work's
++users, your or third parties' legal rights to forbid circumvention of
++technological measures.
++
++  4. Conveying Verbatim Copies.
++
++  You may convey verbatim copies of the Program's source code as you
++receive it, in any medium, provided that you conspicuously and
++appropriately publish on each copy an appropriate copyright notice;
++keep intact all notices stating that this License and any
++non-permissive terms added in accord with section 7 apply to the code;
++keep intact all notices of the absence of any warranty; and give all
++recipients a copy of this License along with the Program.
++
++  You may charge any price or no price for each copy that you convey,
++and you may offer support or warranty protection for a fee.
++
++  5. Conveying Modified Source Versions.
++
++  You may convey a work based on the Program, or the modifications to
++produce it from the Program, in the form of source code under the
++terms of section 4, provided that you also meet all of these conditions:
++
++    a) The work must carry prominent notices stating that you modified
++    it, and giving a relevant date.
++
++    b) The work must carry prominent notices stating that it is
++    released under this License and any conditions added under section
++    7.  This requirement modifies the requirement in section 4 to
++    "keep intact all notices".
++
++    c) You must license the entire work, as a whole, under this
++    License to anyone who comes into possession of a copy.  This
++    License will therefore apply, along with any applicable section 7
++    additional terms, to the whole of the work, and all its parts,
++    regardless of how they are packaged.  This License gives no
++    permission to license the work in any other way, but it does not
++    invalidate such permission if you have separately received it.
++
++    d) If the work has interactive user interfaces, each must display
++    Appropriate Legal Notices; however, if the Program has interactive
++    interfaces that do not display Appropriate Legal Notices, your
++    work need not make them do so.
++
++  A compilation of a covered work with other separate and independent
++works, which are not by their nature extensions of the covered work,
++and which are not combined with it such as to form a larger program,
++in or on a volume of a storage or distribution medium, is called an
++"aggregate" if the compilation and its resulting copyright are not
++used to limit the access or legal rights of the compilation's users
++beyond what the individual works permit.  Inclusion of a covered work
++in an aggregate does not cause this License to apply to the other
++parts of the aggregate.
++
++  6. Conveying Non-Source Forms.
++
++  You may convey a covered work in object code form under the terms
++of sections 4 and 5, provided that you also convey the
++machine-readable Corresponding Source under the terms of this License,
++in one of these ways:
++
++    a) Convey the object code in, or embodied in, a physical product
++    (including a physical distribution medium), accompanied by the
++    Corresponding Source fixed on a durable physical medium
++    customarily used for software interchange.
++
++    b) Convey the object code in, or embodied in, a physical product
++    (including a physical distribution medium), accompanied by a
++    written offer, valid for at least three years and valid for as
++    long as you offer spare parts or customer support for that product
++    model, to give anyone who possesses the object code either (1) a
++    copy of the Corresponding Source for all the software in the
++    product that is covered by this License, on a durable physical
++    medium customarily used for software interchange, for a price no
++    more than your reasonable cost of physically performing this
++    conveying of source, or (2) access to copy the
++    Corresponding Source from a network server at no charge.
++
++    c) Convey individual copies of the object code with a copy of the
++    written offer to provide the Corresponding Source.  This
++    alternative is allowed only occasionally and noncommercially, and
++    only if you received the object code with such an offer, in accord
++    with subsection 6b.
++
++    d) Convey the object code by offering access from a designated
++    place (gratis or for a charge), and offer equivalent access to the
++    Corresponding Source in the same way through the same place at no
++    further charge.  You need not require recipients to copy the
++    Corresponding Source along with the object code.  If the place to
++    copy the object code is a network server, the Corresponding Source
++    may be on a different server (operated by you or a third party)
++    that supports equivalent copying facilities, provided you maintain
++    clear directions next to the object code saying where to find the
++    Corresponding Source.  Regardless of what server hosts the
++    Corresponding Source, you remain obligated to ensure that it is
++    available for as long as needed to satisfy these requirements.
++
++    e) Convey the object code using peer-to-peer transmission, provided
++    you inform other peers where the object code and Corresponding
++    Source of the work are being offered to the general public at no
++    charge under subsection 6d.
++
++  A separable portion of the object code, whose source code is excluded
++from the Corresponding Source as a System Library, need not be
++included in conveying the object code work.
++
++  A "User Product" is either (1) a "consumer product", which means any
++tangible personal property which is normally used for personal, family,
++or household purposes, or (2) anything designed or sold for incorporation
++into a dwelling.  In determining whether a product is a consumer product,
++doubtful cases shall be resolved in favor of coverage.  For a particular
++product received by a particular user, "normally used" refers to a
++typical or common use of that class of product, regardless of the status
++of the particular user or of the way in which the particular user
++actually uses, or expects or is expected to use, the product.  A product
++is a consumer product regardless of whether the product has substantial
++commercial, industrial or non-consumer uses, unless such uses represent
++the only significant mode of use of the product.
++
++  "Installation Information" for a User Product means any methods,
++procedures, authorization keys, or other information required to install
++and execute modified versions of a covered work in that User Product from
++a modified version of its Corresponding Source.  The information must
++suffice to ensure that the continued functioning of the modified object
++code is in no case prevented or interfered with solely because
++modification has been made.
++
++  If you convey an object code work under this section in, or with, or
++specifically for use in, a User Product, and the conveying occurs as
++part of a transaction in which the right of possession and use of the
++User Product is transferred to the recipient in perpetuity or for a
++fixed term (regardless of how the transaction is characterized), the
++Corresponding Source conveyed under this section must be accompanied
++by the Installation Information.  But this requirement does not apply
++if neither you nor any third party retains the ability to install
++modified object code on the User Product (for example, the work has
++been installed in ROM).
++
++  The requirement to provide Installation Information does not include a
++requirement to continue to provide support service, warranty, or updates
++for a work that has been modified or installed by the recipient, or for
++the User Product in which it has been modified or installed.  Access to a
++network may be denied when the modification itself materially and
++adversely affects the operation of the network or violates the rules and
++protocols for communication across the network.
++
++  Corresponding Source conveyed, and Installation Information provided,
++in accord with this section must be in a format that is publicly
++documented (and with an implementation available to the public in
++source code form), and must require no special password or key for
++unpacking, reading or copying.
++
++  7. Additional Terms.
++
++  "Additional permissions" are terms that supplement the terms of this
++License by making exceptions from one or more of its conditions.
++Additional permissions that are applicable to the entire Program shall
++be treated as though they were included in this License, to the extent
++that they are valid under applicable law.  If additional permissions
++apply only to part of the Program, that part may be used separately
++under those permissions, but the entire Program remains governed by
++this License without regard to the additional permissions.
++
++  When you convey a copy of a covered work, you may at your option
++remove any additional permissions from that copy, or from any part of
++it.  (Additional permissions may be written to require their own
++removal in certain cases when you modify the work.)  You may place
++additional permissions on material, added by you to a covered work,
++for which you have or can give appropriate copyright permission.
++
++  Notwithstanding any other provision of this License, for material you
++add to a covered work, you may (if authorized by the copyright holders of
++that material) supplement the terms of this License with terms:
++
++    a) Disclaiming warranty or limiting liability differently from the
++    terms of sections 15 and 16 of this License; or
++
++    b) Requiring preservation of specified reasonable legal notices or
++    author attributions in that material or in the Appropriate Legal
++    Notices displayed by works containing it; or
++
++    c) Prohibiting misrepresentation of the origin of that material, or
++    requiring that modified versions of such material be marked in
++    reasonable ways as different from the original version; or
++
++    d) Limiting the use for publicity purposes of names of licensors or
++    authors of the material; or
++
++    e) Declining to grant rights under trademark law for use of some
++    trade names, trademarks, or service marks; or
++
++    f) Requiring indemnification of licensors and authors of that
++    material by anyone who conveys the material (or modified versions of
++    it) with contractual assumptions of liability to the recipient, for
++    any liability that these contractual assumptions directly impose on
++    those licensors and authors.
++
++  All other non-permissive additional terms are considered "further
++restrictions" within the meaning of section 10.  If the Program as you
++received it, or any part of it, contains a notice stating that it is
++governed by this License along with a term that is a further
++restriction, you may remove that term.  If a license document contains
++a further restriction but permits relicensing or conveying under this
++License, you may add to a covered work material governed by the terms
++of that license document, provided that the further restriction does
++not survive such relicensing or conveying.
++
++  If you add terms to a covered work in accord with this section, you
++must place, in the relevant source files, a statement of the
++additional terms that apply to those files, or a notice indicating
++where to find the applicable terms.
++
++  Additional terms, permissive or non-permissive, may be stated in the
++form of a separately written license, or stated as exceptions;
++the above requirements apply either way.
++
++  8. Termination.
++
++  You may not propagate or modify a covered work except as expressly
++provided under this License.  Any attempt otherwise to propagate or
++modify it is void, and will automatically terminate your rights under
++this License (including any patent licenses granted under the third
++paragraph of section 11).
++
++  However, if you cease all violation of this License, then your
++license from a particular copyright holder is reinstated (a)
++provisionally, unless and until the copyright holder explicitly and
++finally terminates your license, and (b) permanently, if the copyright
++holder fails to notify you of the violation by some reasonable means
++prior to 60 days after the cessation.
++
++  Moreover, your license from a particular copyright holder is
++reinstated permanently if the copyright holder notifies you of the
++violation by some reasonable means, this is the first time you have
++received notice of violation of this License (for any work) from that
++copyright holder, and you cure the violation prior to 30 days after
++your receipt of the notice.
++
++  Termination of your rights under this section does not terminate the
++licenses of parties who have received copies or rights from you under
++this License.  If your rights have been terminated and not permanently
++reinstated, you do not qualify to receive new licenses for the same
++material under section 10.
++
++  9. Acceptance Not Required for Having Copies.
++
++  You are not required to accept this License in order to receive or
++run a copy of the Program.  Ancillary propagation of a covered work
++occurring solely as a consequence of using peer-to-peer transmission
++to receive a copy likewise does not require acceptance.  However,
++nothing other than this License grants you permission to propagate or
++modify any covered work.  These actions infringe copyright if you do
++not accept this License.  Therefore, by modifying or propagating a
++covered work, you indicate your acceptance of this License to do so.
++
++  10. Automatic Licensing of Downstream Recipients.
++
++  Each time you convey a covered work, the recipient automatically
++receives a license from the original licensors, to run, modify and
++propagate that work, subject to this License.  You are not responsible
++for enforcing compliance by third parties with this License.
++
++  An "entity transaction" is a transaction transferring control of an
++organization, or substantially all assets of one, or subdividing an
++organization, or merging organizations.  If propagation of a covered
++work results from an entity transaction, each party to that
++transaction who receives a copy of the work also receives whatever
++licenses to the work the party's predecessor in interest had or could
++give under the previous paragraph, plus a right to possession of the
++Corresponding Source of the work from the predecessor in interest, if
++the predecessor has it or can get it with reasonable efforts.
++
++  You may not impose any further restrictions on the exercise of the
++rights granted or affirmed under this License.  For example, you may
++not impose a license fee, royalty, or other charge for exercise of
++rights granted under this License, and you may not initiate litigation
++(including a cross-claim or counterclaim in a lawsuit) alleging that
++any patent claim is infringed by making, using, selling, offering for
++sale, or importing the Program or any portion of it.
++
++  11. Patents.
++
++  A "contributor" is a copyright holder who authorizes use under this
++License of the Program or a work on which the Program is based.  The
++work thus licensed is called the contributor's "contributor version".
++
++  A contributor's "essential patent claims" are all patent claims
++owned or controlled by the contributor, whether already acquired or
++hereafter acquired, that would be infringed by some manner, permitted
++by this License, of making, using, or selling its contributor version,
++but do not include claims that would be infringed only as a
++consequence of further modification of the contributor version.  For
++purposes of this definition, "control" includes the right to grant
++patent sublicenses in a manner consistent with the requirements of
++this License.
++
++  Each contributor grants you a non-exclusive, worldwide, royalty-free
++patent license under the contributor's essential patent claims, to
++make, use, sell, offer for sale, import and otherwise run, modify and
++propagate the contents of its contributor version.
++
++  In the following three paragraphs, a "patent license" is any express
++agreement or commitment, however denominated, not to enforce a patent
++(such as an express permission to practice a patent or covenant not to
++sue for patent infringement).  To "grant" such a patent license to a
++party means to make such an agreement or commitment not to enforce a
++patent against the party.
++
++  If you convey a covered work, knowingly relying on a patent license,
++and the Corresponding Source of the work is not available for anyone
++to copy, free of charge and under the terms of this License, through a
++publicly available network server or other readily accessible means,
++then you must either (1) cause the Corresponding Source to be so
++available, or (2) arrange to deprive yourself of the benefit of the
++patent license for this particular work, or (3) arrange, in a manner
++consistent with the requirements of this License, to extend the patent
++license to downstream recipients.  "Knowingly relying" means you have
++actual knowledge that, but for the patent license, your conveying the
++covered work in a country, or your recipient's use of the covered work
++in a country, would infringe one or more identifiable patents in that
++country that you have reason to believe are valid.
++
++  If, pursuant to or in connection with a single transaction or
++arrangement, you convey, or propagate by procuring conveyance of, a
++covered work, and grant a patent license to some of the parties
++receiving the covered work authorizing them to use, propagate, modify
++or convey a specific copy of the covered work, then the patent license
++you grant is automatically extended to all recipients of the covered
++work and works based on it.
++
++  A patent license is "discriminatory" if it does not include within
++the scope of its coverage, prohibits the exercise of, or is
++conditioned on the non-exercise of one or more of the rights that are
++specifically granted under this License.  You may not convey a covered
++work if you are a party to an arrangement with a third party that is
++in the business of distributing software, under which you make payment
++to the third party based on the extent of your activity of conveying
++the work, and under which the third party grants, to any of the
++parties who would receive the covered work from you, a discriminatory
++patent license (a) in connection with copies of the covered work
++conveyed by you (or copies made from those copies), or (b) primarily
++for and in connection with specific products or compilations that
++contain the covered work, unless you entered into that arrangement,
++or that patent license was granted, prior to 28 March 2007.
++
++  Nothing in this License shall be construed as excluding or limiting
++any implied license or other defenses to infringement that may
++otherwise be available to you under applicable patent law.
++
++  12. No Surrender of Others' Freedom.
++
++  If conditions are imposed on you (whether by court order, agreement or
++otherwise) that contradict the conditions of this License, they do not
++excuse you from the conditions of this License.  If you cannot convey a
++covered work so as to satisfy simultaneously your obligations under this
++License and any other pertinent obligations, then as a consequence you may
++not convey it at all.  For example, if you agree to terms that obligate you
++to collect a royalty for further conveying from those to whom you convey
++the Program, the only way you could satisfy both those terms and this
++License would be to refrain entirely from conveying the Program.
++
++  13. Use with the GNU Affero General Public License.
++
++  Notwithstanding any other provision of this License, you have
++permission to link or combine any covered work with a work licensed
++under version 3 of the GNU Affero General Public License into a single
++combined work, and to convey the resulting work.  The terms of this
++License will continue to apply to the part which is the covered work,
++but the special requirements of the GNU Affero General Public License,
++section 13, concerning interaction through a network will apply to the
++combination as such.
++
++  14. Revised Versions of this License.
++
++  The Free Software Foundation may publish revised and/or new versions of
++the GNU General Public License from time to time.  Such new versions will
++be similar in spirit to the present version, but may differ in detail to
++address new problems or concerns.
++
++  Each version is given a distinguishing version number.  If the
++Program specifies that a certain numbered version of the GNU General
++Public License "or any later version" applies to it, you have the
++option of following the terms and conditions either of that numbered
++version or of any later version published by the Free Software
++Foundation.  If the Program does not specify a version number of the
++GNU General Public License, you may choose any version ever published
++by the Free Software Foundation.
++
++  If the Program specifies that a proxy can decide which future
++versions of the GNU General Public License can be used, that proxy's
++public statement of acceptance of a version permanently authorizes you
++to choose that version for the Program.
++
++  Later license versions may give you additional or different
++permissions.  However, no additional obligations are imposed on any
++author or copyright holder as a result of your choosing to follow a
++later version.
++
++  15. Disclaimer of Warranty.
++
++  THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
++APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
++HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY
++OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,
++THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
++IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
++ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
++
++  16. Limitation of Liability.
++
++  IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
++WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MODIFIES AND/OR CONVEYS
++THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY
++GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE
++USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED TO LOSS OF
++DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD
++PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER PROGRAMS),
++EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
++SUCH DAMAGES.
++
++  17. Interpretation of Sections 15 and 16.
++
++  If the disclaimer of warranty and limitation of liability provided
++above cannot be given local legal effect according to their terms,
++reviewing courts shall apply local law that most closely approximates
++an absolute waiver of all civil liability in connection with the
++Program, unless a warranty or assumption of liability accompanies a
++copy of the Program in return for a fee.
++
++                     END OF TERMS AND CONDITIONS
++
++            How to Apply These Terms to Your New Programs
++
++  If you develop a new program, and you want it to be of the greatest
++possible use to the public, the best way to achieve this is to make it
++free software which everyone can redistribute and change under these terms.
++
++  To do so, attach the following notices to the program.  It is safest
++to attach them to the start of each source file to most effectively
++state the exclusion of warranty; and each file should have at least
++the "copyright" line and a pointer to where the full notice is found.
++
++    <one line to give the program's name and a brief idea of what it does.>
++    Copyright (C) <year>  <name of author>
++
++    This program is free software: you can redistribute it and/or modify
++    it under the terms of the GNU General Public License as published by
++    the Free Software Foundation, either version 3 of the License, or
++    (at your option) any later version.
++
++    This program is distributed in the hope that it will be useful,
++    but WITHOUT ANY WARRANTY; without even the implied warranty of
++    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++    GNU General Public License for more details.
++
++    You should have received a copy of the GNU General Public License
++    along with this program.  If not, see <https://www.gnu.org/licenses/>.
++
++Also add information on how to contact you by electronic and paper mail.
++
++  If the program does terminal interaction, make it output a short
++notice like this when it starts in an interactive mode:
++
++    <program>  Copyright (C) <year>  <name of author>
++    This program comes with ABSOLUTELY NO WARRANTY; for details type `show w'.
++    This is free software, and you are welcome to redistribute it
++    under certain conditions; type `show c' for details.
++
++The hypothetical commands `show w' and `show c' should show the appropriate
++parts of the General Public License.  Of course, your program's commands
++might be different; for a GUI interface, you would use an "about box".
++
++  You should also get your employer (if you work as a programmer) or school,
++if any, to sign a "copyright disclaimer" for the program, if necessary.
++For more information on this, and how to apply and follow the GNU GPL, see
++<https://www.gnu.org/licenses/>.
++
++  The GNU General Public License does not permit incorporating your program
++into proprietary programs.  If your program is a subroutine library, you
++may consider it more useful to permit linking proprietary applications with
++the library.  If this is what you want to do, use the GNU Lesser General
++Public License instead of this License.  But first, please read
++<https://www.gnu.org/licenses/why-not-lgpl.html>.
+diff --git a/main/boards/esp32s3-weact-dog/README.md b/main/boards/esp32s3-weact-dog/README.md
+new file mode 100644
+index 0000000..c702da1
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/README.md
+@@ -0,0 +1,110 @@
++# esp32s3-weact-dog: XIAOZHI desk dog robot
++
++WeAct ESP32-S3 CoreBoard N16R8 + ILI9341 2.4" TFT (animated RoboEyes) + INMP441 mic
+++ I2S amp + 4 hobby servos as symbolic legs. Chats through the Xiaozhi cloud.
++
++## Wiring
++
++| Function | ESP32-S3 GPIO | Module pin |
++|---|---|---|
++| TFT SCLK | 40 | SCK |
++| TFT MOSI | 41 | SDI (MOSI) |
++| TFT MISO | 42 (optional, unused) | SDO (MISO) |
++| TFT CS | 39 | CS |
++| TFT DC | 38 | DC / RS |
++| TFT RST | 47 | RESET |
++| TFT LED | 3.3 V | LED |
++| TFT VCC / GND | 3.3 V / GND | |
++| Mic WS | 4 | INMP441 WS |
++| Mic SCK | 5 | INMP441 SCK |
++| Mic SD | 6 | INMP441 SD |
++| Mic L/R, GND, VDD | GND, GND, 3.3 V | |
++| Amp BCLK | 15 | BCLK |
++| Amp LRC | 16 | LRC / WS |
++| Amp DIN | 17 | DIN |
++| Amp SD (enable) | 18 | SD / EN |
++| Amp VIN | 5 V (boost) | |
++| Servo front-left | 9 | signal |
++| Servo front-right | 10 | signal |
++| Servo rear-left | 11 | signal |
++| Servo rear-right | 12 | signal |
++| Servo V+ / GND | 5 V (boost) / GND (common with ESP32) | |
++| Push-to-talk | 0 | BOOT button on the board |
++| Status LED | 48 | onboard WS2812 |
++| Reserved | 7 SDA / 8 SCL (ToF, IMU), 19/20 (USB) | not used yet |
++
++All pins are defined only in `board_pins.h`.
++
++## Build (ESP-IDF v6.0.1 or newer)
++
++```sh
++# Windows: ESP-IDF PowerShell / CMD from the ESP-IDF installer (v6.0.1+)
++# Linux/macOS: source <esp-idf>/export.sh
++cd xiaozhi-esp32
++python scripts/build.py esp32s3-weact-dog --language vi-VN
++idf.py -p COM5 flash monitor        # replace COM5 with your port
++```
++
++`--language` picks the voice prompts/UI strings (`en-US`, `zh-CN`, ...).
++The first build downloads managed components from components.espressif.com (needs
++internet), then takes several minutes.
++
++Bench test of the eyes alone: `idf.py menuconfig` -> enable
++"XIAOZHI Dog: cycle eye moods on a debug timer", rebuild. The log prints the fps.
++
++## First start
++
++1. With no saved Wi-Fi the robot opens its own hotspot. The hotspot name and the setup
++   page address are shown at the bottom of the screen; connect with a phone, open the
++   page and enter your Wi-Fi.
++2. After it connects, it speaks a 6-digit code and shows it at the bottom of the screen.
++   Add the device with that code on the Xiaozhi console (xiaozhi.me).
++3. Click BOOT to start/stop listening. If the wake word is enabled, say it instead.
++
++Press BOOT while it is still starting to re-enter Wi-Fi setup. No credentials are
++compiled into the firmware.
++
++## Configuration
++
++| What | Where |
++|---|---|
++| Pins | `board_pins.h` |
++| Panel orientation, colour order, SPI speed, audio rates, default volume | `config.h` |
++| Eye colours, sizes, fps; servo trims, directions, range, speed, safety limits | `dog_config.h` |
++| State/emotion -> eyes + legs | tables at the top of `dog_behavior.cc` |
++| Leg poses and motions | keyframe tables at the top of `leg_servos.cc` |
++
++Volume can also be changed by voice ("turn the volume down"). Things to check on the
++real hardware are listed in `docs/HARDWARE_TODO.md`.
++
++## Behaviour
++
++| Trigger | Eyes | Legs |
++|---|---|---|
++| Boot | open from closed | (servos attach one by one once Wi-Fi + audio are up) then stand |
++| Idle | default, blink, drift | stand; sit after 60 s, then PWM off |
++| Listening | wide, centred, curious | stand |
++| Thinking (your words received) | look up-left | |
++| Speaking | keep emotion, centred | soft wiggle every 3.5 s |
++| happy / funny / loving / delicious | happy | wiggle |
++| laughing | happy + laugh | wave |
++| sad / crying | droopy | crouch |
++| embarrassed | droopy | |
++| angry | angry | |
++| surprised / shocked | wide + curious 1.5 s | quick stand |
++| confused / thinking | confused shake | |
++| sleepy / relaxed | droopy, slow blink | |
++| Wi-Fi setup / errors | sweat | |
++| anything else | default | |
++
++## Power safety (servos)
++
++Max 2 servos moving at once, start-ups 80 ms apart, 90 deg/s ramps, logical range
++45..135 deg, PWM cut after a pose is held 1 s. The reset reason is logged at every
++boot; `BROWNOUT` points to the battery/boost converter.
++
++## License
++
++The eye animation is a port of FluxGarage RoboEyes (GPL-3.0-or-later,
++`LICENSE-RoboEyes.txt`), so a firmware binary containing this board is GPL-3.0.
++The subtitle font bitmaps are generated from DejaVu Sans Mono (`tools/gen_font_8x16.py`).
+diff --git a/main/boards/esp32s3-weact-dog/board_pins.h b/main/boards/esp32s3-weact-dog/board_pins.h
+new file mode 100644
+index 0000000..82d172d
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/board_pins.h
+@@ -0,0 +1,43 @@
++// Single source of truth for every GPIO used (or reserved) by the
++// XIAOZHI dog robot on a WeAct ESP32-S3 CoreBoard N16R8.
++#pragma once
++
++#include <driver/gpio.h>
++
++// ---- TFT ILI9341 2.4" (SPI) ------------------------------------------------
++#define PIN_TFT_DC    GPIO_NUM_38
++#define PIN_TFT_CS    GPIO_NUM_39
++#define PIN_TFT_SCLK  GPIO_NUM_40
++#define PIN_TFT_MOSI  GPIO_NUM_41
++#define PIN_TFT_MISO  GPIO_NUM_NC  // GPIO42 is wired but unused (write-only panel)
++#define PIN_TFT_RST   GPIO_NUM_47
++// TODO(hw-verify): backlight is tied to 3.3V. Set a GPIO here to get PWM dimming.
++#define PIN_TFT_BL    GPIO_NUM_NC
++
++// ---- Microphone INMP441 (I2S RX, L/R -> GND = left slot) -------------------
++#define PIN_MIC_WS    GPIO_NUM_4
++#define PIN_MIC_SCK   GPIO_NUM_5
++#define PIN_MIC_SD    GPIO_NUM_6
++
++// ---- Amplifier, WeAct I2S dual-speaker amp (I2S TX) ------------------------
++// TODO(hw-verify): pinout assumed MAX98357A-style (BCLK, LRC, DIN, SD).
++#define PIN_AMP_BCLK  GPIO_NUM_15
++#define PIN_AMP_LRC   GPIO_NUM_16
++#define PIN_AMP_DIN   GPIO_NUM_17
++// TODO(hw-verify): SD/enable pin. High = enabled on MAX98357A. NC to disable.
++#define PIN_AMP_SD    GPIO_NUM_18
++
++// ---- Servo legs ------------------------------------------------------------
++#define PIN_SERVO_FL  GPIO_NUM_9
++#define PIN_SERVO_FR  GPIO_NUM_10
++#define PIN_SERVO_RL  GPIO_NUM_11
++#define PIN_SERVO_RR  GPIO_NUM_12
++
++// ---- UI --------------------------------------------------------------------
++#define PIN_BUTTON_TALK GPIO_NUM_0   // BOOT button, input only
++#define PIN_STATUS_LED  GPIO_NUM_48  // onboard WS2812
++
++// ---- Reserved for later (do not use) ---------------------------------------
++// I2C SDA 7 / SCL 8      : VL53L0X ToF, MPU6050
++// USB D- 19 / D+ 20      : camera / native USB
++// Never use: 0 as output, 3/45/46 (strapping), 26..32 (flash), 35..37 (OPI PSRAM)
+diff --git a/main/boards/esp32s3-weact-dog/config.h b/main/boards/esp32s3-weact-dog/config.h
+new file mode 100644
+index 0000000..8caf92e
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/config.h
+@@ -0,0 +1,30 @@
++#ifndef _BOARD_CONFIG_H_
++#define _BOARD_CONFIG_H_
++
++#include "board_pins.h"
++
++// Audio: INMP441 at 16 kHz in, server TTS is 24 kHz Opus out.
++#define AUDIO_INPUT_SAMPLE_RATE  16000
++#define AUDIO_OUTPUT_SAMPLE_RATE 24000
++// Conservative default for small 4 ohm speakers (0..100, changeable by voice).
++#define AUDIO_DEFAULT_OUTPUT_VOLUME 60
++// TODO(hw-verify): 1 = drive both I2S slots (dual speaker amp), 0 = left only.
++#define AUDIO_SPK_STEREO_DUP 1
++
++#define BOOT_BUTTON_GPIO PIN_BUTTON_TALK
++#define BUILTIN_LED_GPIO PIN_STATUS_LED
++
++// Display: ILI9341 in landscape.
++#define DISPLAY_WIDTH    320
++#define DISPLAY_HEIGHT   240
++#define DISPLAY_SPI_HOST SPI2_HOST
++#define DISPLAY_SPI_HZ   (40 * 1000 * 1000)  // drop to 26/20 MHz if unstable
++#define DISPLAY_SPI_MODE 0
++// TODO(hw-verify): orientation / colour order / inversion for this module.
++#define DISPLAY_SWAP_XY      true
++#define DISPLAY_MIRROR_X     false  // swap+no mirror = Adafruit rotation 1 (MADCTL 0x28)
++#define DISPLAY_MIRROR_Y     false  // set both true for rotation 3 (upside down)
++#define DISPLAY_INVERT_COLOR false
++#define DISPLAY_RGB_ORDER    LCD_RGB_ELEMENT_ORDER_BGR
++
++#endif  // _BOARD_CONFIG_H_
+diff --git a/main/boards/esp32s3-weact-dog/config.json b/main/boards/esp32s3-weact-dog/config.json
+new file mode 100644
+index 0000000..4774867
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/config.json
+@@ -0,0 +1,10 @@
++{
++    "type": "esp32s3-weact-dog",
++    "target": "esp32s3",
++    "builds": [
++        {
++            "name": "esp32s3-weact-dog",
++            "sdkconfig_append": []
++        }
++    ]
++}
+diff --git a/main/boards/esp32s3-weact-dog/dog_behavior.cc b/main/boards/esp32s3-weact-dog/dog_behavior.cc
+new file mode 100644
+index 0000000..9471c26
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/dog_behavior.cc
+@@ -0,0 +1,185 @@
++#include "dog_behavior.h"
++
++#include <esp_log.h>
++#include <esp_timer.h>
++
++#include <cstring>
++
++#include "application.h"
++
++#define TAG "DogBehavior"
++
++// ============================================================================
++// THE mapping table: server emotion -> eyes + legs.
++// Unknown strings fall back to kNeutral / no motion (never crash).
++// ============================================================================
++namespace {
++struct EmotionRule {
++    const char* emotion;
++    EyePreset eyes;
++    LegMotion legs;
++};
++
++const EmotionRule kEmotionTable[] = {
++    // server emotions (xiaozhi LLM emoji set)
++    {"happy", EyePreset::kHappy, LegMotion::kWiggle},
++    {"laughing", EyePreset::kLaugh, LegMotion::kWave},
++    {"funny", EyePreset::kHappy, LegMotion::kWiggle},
++    {"loving", EyePreset::kHappy, LegMotion::kWiggle},
++    {"delicious", EyePreset::kHappy, LegMotion::kWiggle},
++    {"sad", EyePreset::kSad, LegMotion::kCrouch},
++    {"crying", EyePreset::kSad, LegMotion::kCrouch},
++    {"embarrassed", EyePreset::kSad, LegMotion::kNone},
++    {"angry", EyePreset::kAngry, LegMotion::kNone},
++    {"surprised", EyePreset::kSurprised, LegMotion::kQuickStand},
++    {"shocked", EyePreset::kSurprised, LegMotion::kQuickStand},
++    {"confused", EyePreset::kConfused, LegMotion::kNone},
++    {"thinking", EyePreset::kConfused, LegMotion::kNone},
++    {"sleepy", EyePreset::kSleepy, LegMotion::kNone},
++    {"relaxed", EyePreset::kSleepy, LegMotion::kNone},
++    // Not in the brief, mild positive faces: happy eyes, no legs (deviation, see PLAN.md)
++    {"winking", EyePreset::kHappy, LegMotion::kNone},
++    {"cool", EyePreset::kHappy, LegMotion::kNone},
++    {"confident", EyePreset::kHappy, LegMotion::kNone},
++    {"kissy", EyePreset::kHappy, LegMotion::kNone},
++    {"silly", EyePreset::kHappy, LegMotion::kNone},
++    // device-side emotions sent by the firmware core
++    {"robot_2", EyePreset::kBoot, LegMotion::kNone},
++    {"warning", EyePreset::kError, LegMotion::kNone},
++    {"cloud_off", EyePreset::kError, LegMotion::kNone},
++    {"cancel", EyePreset::kError, LegMotion::kNone},
++    {"gear", EyePreset::kError, LegMotion::kNone},  // Wi-Fi provisioning
++    {"link", EyePreset::kNeutral, LegMotion::kNone},  // activation code shown
++};
++
++// ============================================================================
++// Device state -> eyes + legs
++// ============================================================================
++struct StateRule {
++    DeviceState state;
++    EyePreset eyes;
++    LegMotion legs;
++};
++
++const StateRule kStateTable[] = {
++    {kDeviceStateStarting, EyePreset::kBoot, LegMotion::kNone},
++    {kDeviceStateIdle, EyePreset::kIdle, LegMotion::kStand},
++    {kDeviceStateConnecting, EyePreset::kNeutral, LegMotion::kNone},
++    {kDeviceStateListening, EyePreset::kListening, LegMotion::kStand},
++    {kDeviceStateSpeaking, EyePreset::kSpeaking, LegMotion::kSoftWiggle},
++    {kDeviceStateWifiConfiguring, EyePreset::kError, LegMotion::kNone},
++    {kDeviceStateFatalError, EyePreset::kError, LegMotion::kRelax},
++};
++// "Thinking" is not an upstream state: Listening + user text received.
++constexpr EyePreset kThinkingEyes = EyePreset::kThinking;
++
++int64_t now_ms() { return esp_timer_get_time() / 1000; }
++}  // namespace
++
++DogBehavior::DogBehavior(EyesDisplay* eyes, LegServos* legs) : eyes_(eyes), legs_(legs) {
++    events_ = xQueueCreate(8, sizeof(Event));
++}
++
++void DogBehavior::Start() {
++    eyes_->SetEmotionHook([this](const char* e) { OnEmotion(e); });
++    eyes_->SetChatHook([this](const char* role, const char* content) { OnChat(role, content); });
++    eyes_->ApplyPreset(EyePreset::kBoot);
++    xTaskCreate(&DogBehavior::TaskEntry, "dog", 4096, this, 3, &task_);
++}
++
++void DogBehavior::OnEmotion(const char* emotion) {
++    Event ev = {};
++    ev.type = EventType::kEmotion;
++    strncpy(ev.text, emotion ? emotion : "", sizeof(ev.text) - 1);
++    xQueueSend(events_, &ev, 0);
++}
++
++void DogBehavior::OnChat(const char* role, const char* content) {
++    if (role == nullptr || strcmp(role, "user") != 0 || content == nullptr || content[0] == 0) return;
++    Event ev = {};
++    ev.type = EventType::kUserText;
++    xQueueSend(events_, &ev, 0);
++}
++
++void DogBehavior::TaskEntry(void* arg) { static_cast<DogBehavior*>(arg)->Loop(); }
++
++void DogBehavior::HandleState(DeviceState state, int64_t now) {
++    ESP_LOGI(TAG, "state %d -> %d", (int)state_, (int)state);
++    state_ = state;
++    state_since_ms_ = now;
++    thinking_ = false;
++    surprise_until_ms_ = 0;
++
++    // Servos are powered only once Wi-Fi and audio are up (first Idle).
++    if (state == kDeviceStateIdle && !servos_started_) {
++        servos_started_ = true;
++        legs_->AttachSequential();
++    }
++
++    for (const auto& r : kStateTable) {
++        if (r.state != state) continue;
++        eyes_->ApplyPreset(r.eyes);
++        if (r.legs == LegMotion::kStand && sat_down_) sat_down_ = false;
++        legs_->Play(r.legs);
++        if (r.legs == LegMotion::kSoftWiggle) last_wiggle_ms_ = now;
++        return;
++    }
++}
++
++void DogBehavior::HandleEmotion(const char* emotion, int64_t now) {
++    if (strcmp(emotion, "neutral") == 0 || emotion[0] == 0) {
++        // The core sends "neutral" on every idle/listening/connecting change;
++        // the state table owns those looks. Only reset the mood while speaking.
++        if (state_ == kDeviceStateSpeaking) eyes_->ApplyPreset(EyePreset::kNeutral);
++        return;
++    }
++    for (const auto& r : kEmotionTable) {
++        if (strcmp(r.emotion, emotion) != 0) continue;
++        eyes_->ApplyPreset(r.eyes);
++        if (r.eyes == EyePreset::kSurprised) surprise_until_ms_ = now + DOG_SURPRISE_MS;
++        legs_->Play(r.legs);
++        if (r.legs != LegMotion::kNone) last_wiggle_ms_ = now;  // don't overlap a soft wiggle
++        return;
++    }
++    ESP_LOGW(TAG, "unknown emotion '%s' -> neutral", emotion);
++    eyes_->ApplyPreset(EyePreset::kNeutral);
++}
++
++void DogBehavior::Loop() {
++    // Let Board/Application construction finish before touching the singleton.
++    vTaskDelay(pdMS_TO_TICKS(500));
++    auto& app = Application::GetInstance();
++    TickType_t last = xTaskGetTickCount();
++    while (true) {
++        int64_t now = now_ms();
++        DeviceState s = app.GetDeviceState();
++        if (s != state_) HandleState(s, now);
++
++        Event ev;
++        while (xQueueReceive(events_, &ev, 0) == pdTRUE) {
++            if (ev.type == EventType::kEmotion) {
++                HandleEmotion(ev.text, now);
++            } else if (ev.type == EventType::kUserText && state_ == kDeviceStateListening &&
++                       !thinking_) {
++                thinking_ = true;
++                eyes_->ApplyPreset(kThinkingEyes);
++            }
++        }
++
++        if (surprise_until_ms_ != 0 && now > surprise_until_ms_) {
++            surprise_until_ms_ = 0;
++            eyes_->SetCuriosity(false);
++        }
++        if (state_ == kDeviceStateSpeaking && !legs_->busy() &&
++            now - last_wiggle_ms_ > DOG_SPEAK_WIGGLE_EVERY_MS) {
++            last_wiggle_ms_ = now;
++            legs_->Play(LegMotion::kSoftWiggle);
++        }
++        if (state_ == kDeviceStateIdle && !sat_down_ && legs_->attached() &&
++            now - state_since_ms_ > DOG_IDLE_SIT_AFTER_MS) {
++            sat_down_ = true;
++            legs_->Play(LegMotion::kSit);  // PWM is cut automatically after the hold
++        }
++        vTaskDelayUntil(&last, pdMS_TO_TICKS(DOG_POLL_MS));
++    }
++}
+diff --git a/main/boards/esp32s3-weact-dog/dog_behavior.h b/main/boards/esp32s3-weact-dog/dog_behavior.h
+new file mode 100644
+index 0000000..4f4c756
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/dog_behavior.h
+@@ -0,0 +1,46 @@
++// DogBehavior: maps device state + server emotions to eyes and legs.
++// All mapping tables live in dog_behavior.cc.
++#pragma once
++
++#include <freertos/FreeRTOS.h>
++#include <freertos/queue.h>
++#include <freertos/task.h>
++
++#include "device_state.h"
++#include "eyes_display.h"
++#include "leg_servos.h"
++
++class DogBehavior {
++public:
++    DogBehavior(EyesDisplay* eyes, LegServos* legs);
++    void Start();
++
++    // Called from EyesDisplay hooks (any task). Non-blocking.
++    void OnEmotion(const char* emotion);
++    void OnChat(const char* role, const char* content);
++
++private:
++    enum class EventType : uint8_t { kEmotion, kUserText };
++    struct Event {
++        EventType type;
++        char text[24];
++    };
++
++    static void TaskEntry(void* arg);
++    void Loop();
++    void HandleState(DeviceState state, int64_t now);
++    void HandleEmotion(const char* emotion, int64_t now);
++
++    EyesDisplay* eyes_;
++    LegServos* legs_;
++    QueueHandle_t events_ = nullptr;
++    TaskHandle_t task_ = nullptr;
++
++    DeviceState state_ = kDeviceStateUnknown;
++    bool servos_started_ = false;
++    bool thinking_ = false;
++    bool sat_down_ = false;
++    int64_t state_since_ms_ = 0;
++    int64_t last_wiggle_ms_ = 0;
++    int64_t surprise_until_ms_ = 0;
++};
+diff --git a/main/boards/esp32s3-weact-dog/dog_config.h b/main/boards/esp32s3-weact-dog/dog_config.h
+new file mode 100644
+index 0000000..e00d172
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/dog_config.h
+@@ -0,0 +1,80 @@
++// Tunable constants for the eyes and the servo legs. No magic numbers elsewhere.
++#pragma once
++
++#include <cstdint>
++
++#include "board_pins.h"
++
++// ============================================================================
++// Eyes
++// ============================================================================
++// Colours are plain RGB565 (0xRRRR RGGG GGGB BBBB). The canvas swaps bytes itself.
++#define EYES_COLOR_MAIN       0x07FF  // cyan
++#define EYES_COLOR_BG         0x0000  // black
++#define EYES_COLOR_TEXT       0xFFFF  // subtitle text (notifications, activation code)
++
++#define EYES_FPS              30      // target frame rate (25..30)
++#define EYES_TASK_PRIORITY    2       // low: must never starve audio
++#define EYES_TASK_STACK       4096
++#define EYES_TASK_CORE        1       // tskNO_AFFINITY is also fine
++
++#define EYES_WIDTH            90
++#define EYES_HEIGHT           80
++#define EYES_RADIUS           20
++#define EYES_SPACE            40
++// "Wide open" variant used for listening / surprised
++#define EYES_WIDE_WIDTH       96
++#define EYES_WIDE_HEIGHT      104
++
++#define EYES_SWEAT_SCALE      3.0f    // sweat drops were sized for 128x64
++
++// Push buffer: internal DMA RAM, two ping-pong chunks of N lines each
++#define EYES_PUSH_LINES       24
++
++// Bottom subtitle strip (ASCII + Vietnamese 8x16 font, scaled)
++#define EYES_TEXT_SCALE       2
++#define EYES_TEXT_MAX_LINES   2
++
++// ============================================================================
++// Servo legs
++// ============================================================================
++enum LegId : uint8_t { LEG_FL = 0, LEG_FR = 1, LEG_RL = 2, LEG_RR = 3, LEG_COUNT = 4 };
++
++struct LegConfig {
++    gpio_num_t gpio;
++    int8_t trim_deg;  // added to the logical angle
++    bool invert;      // mirror around 90 deg (for the right-hand side usually)
++};
++
++// TODO(hw-verify): trims and directions per leg after assembly.
++// Logical convention: angle > 90 moves the leg "forward/down" (standing taller).
++static constexpr LegConfig kLegConfig[LEG_COUNT] = {
++    {PIN_SERVO_FL, 0, false},
++    {PIN_SERVO_FR, 0, true},
++    {PIN_SERVO_RL, 0, false},
++    {PIN_SERVO_RR, 0, true},
++};
++
++#define SERVO_NEUTRAL_DEG        90
++#define SERVO_MIN_DEG            45    // hard safety clamp
++#define SERVO_MAX_DEG            135   // hard safety clamp
++#define SERVO_PULSE_MIN_US       500   // pulse at 0 deg
++#define SERVO_PULSE_MAX_US       2400  // pulse at 180 deg
++#define SERVO_PWM_HZ             50
++#define SERVO_PWM_BITS           14
++#define SERVO_LEDC_TIMER         LEDC_TIMER_1    // timer 0 is left for backlight
++#define SERVO_LEDC_FIRST_CHANNEL LEDC_CHANNEL_2  // channels 2..5
++
++#define SERVO_SLEW_DEG_PER_S     90    // ramp speed limit
++#define SERVO_MAX_MOVING         2     // never more than 2 servos moving at once
++#define SERVO_STAGGER_MS         80    // delay between two servo start-ups
++#define SERVO_DETACH_AFTER_MS    1000  // stop PWM when a pose is held this long
++#define SERVO_TICK_MS            20    // control loop period
++#define SERVO_INIT_GAP_MS        300   // sequential attach at boot
++#define SERVO_TASK_PRIORITY      3
++#define SERVO_TASK_STACK         4096
++
++#define DOG_IDLE_SIT_AFTER_MS    60000 // idle this long -> sit, then PWM off
++#define DOG_SPEAK_WIGGLE_EVERY_MS 3500 // soft wiggle cadence while speaking
++#define DOG_SURPRISE_MS          1500  // how long "surprised" curiosity lasts
++#define DOG_POLL_MS              50    // state polling period
+diff --git a/main/boards/esp32s3-weact-dog/eyes_display.cc b/main/boards/esp32s3-weact-dog/eyes_display.cc
+new file mode 100644
+index 0000000..50fdc06
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/eyes_display.cc
+@@ -0,0 +1,372 @@
++#include "eyes_display.h"
++
++#include <esp_heap_caps.h>
++#include <esp_log.h>
++#include <esp_timer.h>
++
++#include <cstring>
++#include <vector>
++
++#include "dog_config.h"
++
++#define TAG "EyesDisplay"
++
++using namespace roboeyes;
++
++EyesDisplay::EyesDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
++                         int width, int height)
++    : panel_io_(panel_io), panel_(panel), canvas_(width, height), eyes_(canvas_) {
++    width_ = width;
++    height_ = height;
++#if HAVE_LVGL
++    // The core's asset loader builds LVGL font/image objects (LVGL builtin TLSF
++    // allocator) even though this UI never draws with LVGL: initialise it once.
++    if (!lv_is_initialized()) lv_init();
++#endif
++
++    mutex_ = xSemaphoreCreateRecursiveMutex();
++    dma_free_ = xSemaphoreCreateCounting(2, 2);
++    for (auto& b : dma_buf_) {
++        b = (uint16_t*)heap_caps_malloc(width * EYES_PUSH_LINES * sizeof(uint16_t),
++                                        MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
++        if (b == nullptr) ESP_LOGE(TAG, "Push buffer allocation failed");
++    }
++
++    esp_lcd_panel_io_callbacks_t cbs = {};
++    cbs.on_color_trans_done = &EyesDisplay::OnColorTransDone;
++    ESP_ERROR_CHECK(esp_lcd_panel_io_register_event_callbacks(panel_io_, &cbs, this));
++
++    canvas_.setBackground(EYES_COLOR_BG);
++    canvas_.fillScreen(EYES_COLOR_BG);
++
++    // RoboEyes setup sized for 320x240 (constants in dog_config.h)
++    eyes_.begin(width, height, EYES_FPS);
++    eyes_.setDisplayColors(EYES_COLOR_BG, EYES_COLOR_MAIN);
++    SetEyeSize(EYES_WIDTH, EYES_HEIGHT);
++    eyes_.setBorderradius(EYES_RADIUS, EYES_RADIUS);
++    eyes_.setSpacebetween(EYES_SPACE);
++    eyes_.eyelidsHeightMax = EYES_HEIGHT / 2;
++    eyes_.eyelidsHappyBottomOffsetMax = EYES_HEIGHT / 2 + 3;
++    // Start centred (the library's member defaults assume 128x64).
++    eyes_.setPosition(DEFAULT);
++    eyes_.eyeLx = eyes_.eyeLxNext;
++    eyes_.eyeLy = eyes_.eyeLyNext;
++    eyes_.eyeRx = eyes_.eyeLx + EYES_WIDTH + EYES_SPACE;
++    eyes_.eyeRy = eyes_.eyeLy;
++    eyes_.setAutoblinker(ON, 3, 3);
++    eyes_.sweatScale = EYES_SWEAT_SCALE;
++
++    esp_lcd_panel_disp_on_off(panel_, true);
++
++    xTaskCreatePinnedToCore(&EyesDisplay::RenderTaskEntry, "eyes", EYES_TASK_STACK, this,
++                            EYES_TASK_PRIORITY, &task_, EYES_TASK_CORE);
++}
++
++EyesDisplay::~EyesDisplay() {
++    if (debug_timer_) {
++        esp_timer_stop(debug_timer_);
++        esp_timer_delete(debug_timer_);
++    }
++    if (task_) vTaskDelete(task_);
++    for (auto& b : dma_buf_) heap_caps_free(b);
++    vSemaphoreDelete(dma_free_);
++    vSemaphoreDelete(mutex_);
++}
++
++bool EyesDisplay::Lock(int timeout_ms) {
++    TickType_t ticks = timeout_ms == 0 ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
++    return xSemaphoreTakeRecursive(mutex_, ticks) == pdTRUE;
++}
++
++void EyesDisplay::Unlock() { xSemaphoreGiveRecursive(mutex_); }
++
++// ---------------------------------------------------------------------------
++// Display interface
++// ---------------------------------------------------------------------------
++void EyesDisplay::SetupUI() { Display::SetupUI(); }
++
++void EyesDisplay::SetStatus(const char* status) {
++    // No status bar on the eyes UI; keep it in the log.
++    ESP_LOGI(TAG, "status: %s", status ? status : "");
++}
++
++void EyesDisplay::ShowNotification(const char* notification, int duration_ms) {
++    if (notification == nullptr) return;
++    ESP_LOGI(TAG, "notify: %s", notification);
++    DisplayLockGuard lock(this);
++    subtitle_ = notification;
++    subtitle_until_us_ = esp_timer_get_time() + (int64_t)duration_ms * 1000;
++}
++
++void EyesDisplay::SetEmotion(const char* emotion) {
++    if (emotion == nullptr) emotion = "neutral";
++    ESP_LOGI(TAG, "emotion: %s", emotion);
++    if (emotion_hook_) emotion_hook_(emotion);
++}
++
++void EyesDisplay::SetChatMessage(const char* role, const char* content) {
++    if (role == nullptr) return;
++    if (content == nullptr) content = "";
++    if (chat_hook_) chat_hook_(role, content);
++    // Chat text is dropped on purpose; only "system" messages (activation code,
++    // Wi-Fi provisioning hint, errors) are shown as a subtitle.
++    if (strcmp(role, "system") == 0) {
++        DisplayLockGuard lock(this);
++        subtitle_ = content;
++        subtitle_until_us_ = 0;
++    }
++}
++
++void EyesDisplay::ClearChatMessages() {
++    DisplayLockGuard lock(this);
++    if (subtitle_until_us_ == 0) subtitle_.clear();
++}
++
++// ---------------------------------------------------------------------------
++// Eyes control
++// ---------------------------------------------------------------------------
++void EyesDisplay::SetEyeSize(int w, int h) {
++    eyes_.setWidth(w, w);
++    eyes_.setHeight(h, h);
++}
++
++void EyesDisplay::SetCuriosity(bool on) {
++    DisplayLockGuard lock(this);
++    eyes_.setCuriosity(on);
++}
++
++void EyesDisplay::SetSweat(bool on) {
++    DisplayLockGuard lock(this);
++    eyes_.setSweat(on);
++}
++
++void EyesDisplay::ApplyPreset(EyePreset p) {
++    DisplayLockGuard lock(this);
++    // Common reset for "where to look / how big"
++    auto normal = [this]() {
++        SetEyeSize(EYES_WIDTH, EYES_HEIGHT);
++        eyes_.setCuriosity(OFF);
++        eyes_.setHFlicker(OFF);
++        eyes_.setVFlicker(OFF);
++        eyes_.setAutoblinker(ON, 3, 3);
++    };
++    if (p != EyePreset::kError && p != EyePreset::kSpeaking) eyes_.setSweat(OFF);
++
++    switch (p) {
++        case EyePreset::kBoot:
++            normal();
++            eyes_.setMood(DEFAULT);
++            eyes_.close();  // start closed, the library opens them smoothly
++            eyes_.open();
++            eyes_.setIdleMode(OFF);
++            eyes_.setPosition(DEFAULT);
++            break;
++        case EyePreset::kIdle:
++            normal();
++            eyes_.setMood(DEFAULT);
++            eyes_.setIdleMode(ON, 2, 3);
++            break;
++        case EyePreset::kNeutral:
++            normal();
++            eyes_.setMood(DEFAULT);
++            eyes_.setIdleMode(OFF);
++            eyes_.setPosition(DEFAULT);
++            break;
++        case EyePreset::kListening:
++            normal();
++            SetEyeSize(EYES_WIDE_WIDTH, EYES_WIDE_HEIGHT);
++            eyes_.setMood(DEFAULT);
++            eyes_.setIdleMode(OFF);
++            eyes_.setPosition(DEFAULT);
++            eyes_.setCuriosity(ON);
++            break;
++        case EyePreset::kThinking:
++            normal();
++            eyes_.setMood(DEFAULT);
++            eyes_.setIdleMode(OFF);
++            eyes_.setPosition(NW);
++            eyes_.setAutoblinker(ON, 4, 3);
++            break;
++        case EyePreset::kSpeaking:
++            // Keep the mood set by the latest server emotion.
++            SetEyeSize(EYES_WIDTH, EYES_HEIGHT);
++            eyes_.setCuriosity(OFF);
++            eyes_.setIdleMode(OFF);
++            eyes_.setPosition(DEFAULT);
++            eyes_.setAutoblinker(ON, 3, 3);
++            break;
++        case EyePreset::kHappy:
++            normal();
++            eyes_.setMood(HAPPY);
++            break;
++        case EyePreset::kLaugh:
++            normal();
++            eyes_.setMood(HAPPY);
++            eyes_.anim_laugh();
++            break;
++        case EyePreset::kSad:
++            normal();
++            eyes_.setMood(TIRED);
++            break;
++        case EyePreset::kAngry:
++            normal();
++            eyes_.setMood(ANGRY);
++            break;
++        case EyePreset::kSurprised:
++            normal();
++            SetEyeSize(EYES_WIDE_WIDTH, EYES_WIDE_HEIGHT);
++            eyes_.setMood(DEFAULT);
++            eyes_.setCuriosity(ON);
++            break;
++        case EyePreset::kConfused:
++            normal();
++            eyes_.setMood(DEFAULT);
++            eyes_.anim_confused();
++            break;
++        case EyePreset::kSleepy:
++            normal();
++            eyes_.setMood(TIRED);
++            eyes_.setAutoblinker(ON, 6, 4);
++            break;
++        case EyePreset::kError:
++            normal();
++            eyes_.setMood(DEFAULT);
++            eyes_.setSweat(ON);
++            break;
++    }
++}
++
++void EyesDisplay::StartDebugCycle(int period_ms) {
++    if (debug_timer_ != nullptr) return;
++    esp_timer_create_args_t args = {};
++    args.callback = [](void* arg) {
++        auto* self = static_cast<EyesDisplay*>(arg);
++        static const EyePreset order[] = {
++            EyePreset::kIdle,  EyePreset::kHappy,    EyePreset::kLaugh,    EyePreset::kSad,
++            EyePreset::kAngry, EyePreset::kSurprised, EyePreset::kConfused, EyePreset::kSleepy,
++            EyePreset::kError, EyePreset::kListening, EyePreset::kThinking,
++        };
++        int i = self->debug_index_++ % (int)(sizeof(order) / sizeof(order[0]));
++        ESP_LOGI(TAG, "debug preset %d, %.1f fps", i, self->fps_);
++        self->ApplyPreset(order[i]);
++    };
++    args.arg = this;
++    args.name = "eyes_debug";
++    esp_timer_create(&args, &debug_timer_);
++    esp_timer_start_periodic(debug_timer_, (uint64_t)period_ms * 1000);
++}
++
++// ---------------------------------------------------------------------------
++// Rendering
++// ---------------------------------------------------------------------------
++void EyesDisplay::RenderTaskEntry(void* arg) { static_cast<EyesDisplay*>(arg)->RenderLoop(); }
++
++void EyesDisplay::DrawSubtitle() {
++    if (subtitle_until_us_ != 0 && esp_timer_get_time() > subtitle_until_us_) {
++        subtitle_.clear();
++        subtitle_until_us_ = 0;
++    }
++    if (subtitle_.empty()) return;
++
++    // Split into UTF-8 code points, wrap by character count.
++    std::vector<std::string> cps;
++    for (size_t i = 0; i < subtitle_.size();) {
++        unsigned char c = subtitle_[i];
++        size_t n = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : 4;
++        if (c == '\n') {
++            cps.emplace_back(" ");
++            i++;
++            continue;
++        }
++        cps.emplace_back(subtitle_.substr(i, n));
++        i += n;
++    }
++    int scale = EYES_TEXT_SCALE;
++    int per_line = width_ / (Rgb565Canvas::glyphW() * scale);
++    int max_lines = EYES_TEXT_MAX_LINES;
++    if ((int)cps.size() > per_line * max_lines) {  // too long: use the small font
++        scale = 1;
++        per_line = width_ / Rgb565Canvas::glyphW();
++        max_lines = EYES_TEXT_MAX_LINES * 2;
++    }
++    std::vector<std::string> lines;
++    std::string line;
++    int count = 0;
++    for (auto& cp : cps) {
++        line += cp;
++        if (++count == per_line) {
++            lines.push_back(line);
++            line.clear();
++            count = 0;
++        }
++    }
++    if (!line.empty()) lines.push_back(line);
++    // Keep the tail: the activation code is at the end of the message.
++    size_t first = lines.size() > (size_t)max_lines ? lines.size() - max_lines : 0;
++    int lh = Rgb565Canvas::glyphH() * scale;
++    int nlines = (int)(lines.size() - first);
++    int y = height_ - nlines * lh - 2;
++    canvas_.fillRect(0, y - 2, width_, nlines * lh + 4, EYES_COLOR_BG);
++    for (size_t i = first; i < lines.size(); ++i, y += lh) {
++        int w = Rgb565Canvas::textWidth(lines[i].c_str(), scale);
++        canvas_.drawText((width_ - w) / 2, y, lines[i].c_str(), EYES_COLOR_TEXT, scale);
++    }
++}
++
++bool EyesDisplay::OnColorTransDone(esp_lcd_panel_io_handle_t, esp_lcd_panel_io_event_data_t*,
++                                   void* user_ctx) {
++    auto* self = static_cast<EyesDisplay*>(user_ctx);
++    BaseType_t woken = pdFALSE;
++    xSemaphoreGiveFromISR(self->dma_free_, &woken);
++    return woken == pdTRUE;
++}
++
++void EyesDisplay::Push(const DirtyBox& box) {
++    if (box.empty() || dma_buf_[0] == nullptr || dma_buf_[1] == nullptr) return;
++    const uint16_t* fb = canvas_.buffer();
++    int w = box.x1 - box.x0 + 1;
++    int lines_per_chunk = (width_ * EYES_PUSH_LINES) / w;
++    for (int y = box.y0; y <= box.y1; y += lines_per_chunk) {
++        int ye = std::min(y + lines_per_chunk - 1, box.y1);
++        xSemaphoreTake(dma_free_, portMAX_DELAY);
++        uint16_t* dst = dma_buf_[dma_next_];
++        dma_next_ ^= 1;
++        for (int yy = y; yy <= ye; ++yy) {
++            memcpy(dst + (yy - y) * w, fb + (size_t)yy * width_ + box.x0, w * sizeof(uint16_t));
++        }
++        if (esp_lcd_panel_draw_bitmap(panel_, box.x0, y, box.x1 + 1, ye + 1, dst) != ESP_OK) {
++            xSemaphoreGive(dma_free_);  // no transfer queued, no callback will come
++        }
++    }
++}
++
++void EyesDisplay::RenderLoop() {
++    const TickType_t period = pdMS_TO_TICKS(1000 / EYES_FPS);
++    TickType_t last = xTaskGetTickCount();
++    int frames = 0;
++    int64_t fps_t0 = esp_timer_get_time();
++    if (!canvas_.ok()) {
++        ESP_LOGE(TAG, "No frame buffer, eyes disabled");
++        vTaskDelete(nullptr);
++    }
++    while (true) {
++        DirtyBox box;
++        if (Lock(1000)) {
++            eyes_.drawEyes();
++            DrawSubtitle();
++            box = canvas_.takeDirty();
++            Unlock();
++        }
++        Push(box);
++
++        if (++frames == 60) {
++            int64_t now = esp_timer_get_time();
++            fps_ = 60.0f * 1e6f / (float)(now - fps_t0);
++            fps_t0 = now;
++            frames = 0;
++        }
++        // If a frame overran, do not try to catch up (no busy loop).
++        if (xTaskGetTickCount() - last >= period) last = xTaskGetTickCount() - period + 1;
++        vTaskDelayUntil(&last, period);
++    }
++}
+diff --git a/main/boards/esp32s3-weact-dog/eyes_display.h b/main/boards/esp32s3-weact-dog/eyes_display.h
+new file mode 100644
+index 0000000..ddef813
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/eyes_display.h
+@@ -0,0 +1,103 @@
++// EyesDisplay: replaces the stock LVGL chat UI with animated RoboEyes on an
++// SPI RGB565 panel. Rendering runs in its own low-priority task.
++#pragma once
++
++#include <esp_lcd_panel_io.h>
++#include <esp_lcd_panel_ops.h>
++#include <freertos/FreeRTOS.h>
++#include <freertos/semphr.h>
++#include <freertos/task.h>
++
++#include <functional>
++#include <string>
++
++#include "display/display.h"
++#include "rgb565_canvas.h"
++#include "roboeyes_port.h"
++
++// High-level looks. The mapping from device state / server emotion to these
++// presets lives in dog_behavior.cc (one table).
++enum class EyePreset : uint8_t {
++    kBoot,       // open from closed, DEFAULT
++    kIdle,       // DEFAULT, autoblink, idle drift
++    kListening,  // wide, centred, curiosity on
++    kThinking,   // look up-left, slow drift
++    kSpeaking,   // keep current mood, centred, autoblink
++    kNeutral,    // DEFAULT, centred, autoblink (no drift)
++    kHappy,      // HAPPY
++    kLaugh,      // HAPPY + anim_laugh()
++    kSad,        // TIRED (droopy)
++    kAngry,      // ANGRY
++    kSurprised,  // wide + curiosity (owner turns it off after a while)
++    kConfused,   // anim_confused()
++    kSleepy,     // TIRED + slow blink
++    kError,      // sweat on, DEFAULT
++};
++
++class EyesDisplay : public Display {
++public:
++    // Hook so the board's behaviour controller sees what the core sends.
++    using EmotionHook = std::function<void(const char* emotion)>;
++    using ChatHook = std::function<void(const char* role, const char* content)>;
++
++    EyesDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel, int width,
++                int height);
++    ~EyesDisplay() override;
++
++    // ---- Display interface ------------------------------------------------
++    void SetStatus(const char* status) override;
++    void ShowNotification(const char* notification, int duration_ms = 3000) override;
++    void ShowNotification(const std::string& notification, int duration_ms = 3000) override {
++        ShowNotification(notification.c_str(), duration_ms);
++    }
++    void SetEmotion(const char* emotion) override;
++    void SetChatMessage(const char* role, const char* content) override;
++    void ClearChatMessages() override;
++    void SetupUI() override;
++
++    // ---- Eyes control (thread-safe) ---------------------------------------
++    void ApplyPreset(EyePreset preset);
++    void SetCuriosity(bool on);
++    void SetSweat(bool on);
++    void SetEmotionHook(EmotionHook hook) { emotion_hook_ = std::move(hook); }
++    void SetChatHook(ChatHook hook) { chat_hook_ = std::move(hook); }
++
++    // Debug: cycle through all presets on a timer (milestone M2 check).
++    void StartDebugCycle(int period_ms);
++    float measured_fps() const { return fps_; }
++
++protected:
++    bool Lock(int timeout_ms = 0) override;
++    void Unlock() override;
++
++private:
++    static void RenderTaskEntry(void* arg);
++    void RenderLoop();
++    void DrawSubtitle();
++    void Push(const DirtyBox& box);
++    void SetEyeSize(int w, int h);
++    static bool OnColorTransDone(esp_lcd_panel_io_handle_t io,
++                                 esp_lcd_panel_io_event_data_t* edata, void* user_ctx);
++
++    esp_lcd_panel_io_handle_t panel_io_;
++    esp_lcd_panel_handle_t panel_;
++    Rgb565Canvas canvas_;
++    roboeyes::RoboEyes<Rgb565Canvas> eyes_;
++
++    SemaphoreHandle_t mutex_ = nullptr;      // recursive: guards eyes_, canvas_, text
++    SemaphoreHandle_t dma_free_ = nullptr;   // counting: free push buffers
++    uint16_t* dma_buf_[2] = {nullptr, nullptr};
++    int dma_next_ = 0;
++    TaskHandle_t task_ = nullptr;
++
++    std::string subtitle_;
++    int64_t subtitle_until_us_ = 0;  // 0 = no expiry
++    bool subtitle_drawn_ = false;
++    bool sweat_locked_ = false;      // error preset keeps sweat until a non-error preset
++
++    EmotionHook emotion_hook_;
++    ChatHook chat_hook_;
++    esp_timer_handle_t debug_timer_ = nullptr;
++    int debug_index_ = 0;
++    volatile float fps_ = 0;
++};
+diff --git a/main/boards/esp32s3-weact-dog/font_8x16.h b/main/boards/esp32s3-weact-dog/font_8x16.h
+new file mode 100644
+index 0000000..379f17c
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/font_8x16.h
+@@ -0,0 +1,240 @@
++// Generated by tools/gen_font_8x16.py - do not edit.
++// 8x16 bitmap glyphs (MSB = left pixel), ASCII + Vietnamese, from DejaVu Sans Mono.
++#pragma once
++#include <cstdint>
++
++static const uint32_t kFont8x16Codepoints[229] = {
++    0x0020, 0x0021, 0x0022, 0x0023, 0x0024, 0x0025, 0x0026, 0x0027, 0x0028, 0x0029, 0x002A, 0x002B, 0x002C, 0x002D, 0x002E, 0x002F, 0x0030, 0x0031, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038, 0x0039, 0x003A, 0x003B, 0x003C, 0x003D, 0x003E, 0x003F, 0x0040, 0x0041, 0x0042, 0x0043, 0x0044, 0x0045, 0x0046, 0x0047, 0x0048, 0x0049, 0x004A, 0x004B, 0x004C, 0x004D, 0x004E, 0x004F, 0x0050, 0x0051, 0x0052, 0x0053, 0x0054, 0x0055, 0x0056, 0x0057, 0x0058, 0x0059, 0x005A, 0x005B, 0x005C, 0x005D, 0x005E, 0x005F, 0x0060, 0x0061, 0x0062, 0x0063, 0x0064, 0x0065, 0x0066, 0x0067, 0x0068, 0x0069, 0x006A, 0x006B, 0x006C, 0x006D, 0x006E, 0x006F, 0x0070, 0x0071, 0x0072, 0x0073, 0x0074, 0x0075, 0x0076, 0x0077, 0x0078, 0x0079, 0x007A, 0x007B, 0x007C, 0x007D, 0x007E, 0x00C0, 0x00C1, 0x00C2, 0x00C3, 0x00C8, 0x00C9, 0x00CA, 0x00CC, 0x00CD, 0x00D2, 0x00D3, 0x00D4, 0x00D5, 0x00D9, 0x00DA, 0x00DD, 0x00E0, 0x00E1, 0x00E2, 0x00E3, 0x00E8, 0x00E9, 0x00EA, 0x00EC, 0x00ED, 0x00F2, 0x00F3, 0x00F4, 0x00F5, 0x00F9, 0x00FA, 0x00FD, 0x0102, 0x0103, 0x0110, 0x0111, 0x0128, 0x0129, 0x0168, 0x0169, 0x01A0, 0x01A1, 0x01AF, 0x01B0, 0x1EA0, 0x1EA1, 0x1EA2, 0x1EA3, 0x1EA4, 0x1EA5, 0x1EA6, 0x1EA7, 0x1EA8, 0x1EA9, 0x1EAA, 0x1EAB, 0x1EAC, 0x1EAD, 0x1EAE, 0x1EAF, 0x1EB0, 0x1EB1, 0x1EB2, 0x1EB3, 0x1EB4, 0x1EB5, 0x1EB6, 0x1EB7, 0x1EB8, 0x1EB9, 0x1EBA, 0x1EBB, 0x1EBC, 0x1EBD, 0x1EBE, 0x1EBF, 0x1EC0, 0x1EC1, 0x1EC2, 0x1EC3, 0x1EC4, 0x1EC5, 0x1EC6, 0x1EC7, 0x1EC8, 0x1EC9, 0x1ECA, 0x1ECB, 0x1ECC, 0x1ECD, 0x1ECE, 0x1ECF, 0x1ED0, 0x1ED1, 0x1ED2, 0x1ED3, 0x1ED4, 0x1ED5, 0x1ED6, 0x1ED7, 0x1ED8, 0x1ED9, 0x1EDA, 0x1EDB, 0x1EDC, 0x1EDD, 0x1EDE, 0x1EDF, 0x1EE0, 0x1EE1, 0x1EE2, 0x1EE3, 0x1EE4, 0x1EE5, 0x1EE6, 0x1EE7, 0x1EE8, 0x1EE9, 0x1EEA, 0x1EEB, 0x1EEC, 0x1EED, 0x1EEE, 0x1EEF, 0x1EF0, 0x1EF1, 0x1EF2, 0x1EF3, 0x1EF4, 0x1EF5, 0x1EF6, 0x1EF7, 0x1EF8, 0x1EF9
++};
++
++static const uint8_t kFont8x16Bitmaps[229][16] = {
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},  // U+0020  
++    {0x00, 0x00, 0x00, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00},  // U+0021 !
++    {0x00, 0x00, 0x00, 0x28, 0x28, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},  // U+0022 "
++    {0x00, 0x00, 0x00, 0x00, 0x14, 0x14, 0x7E, 0x2C, 0x28, 0xFE, 0x48, 0x50, 0x00, 0x00, 0x00, 0x00},  // U+0023 #
++    {0x00, 0x00, 0x00, 0x10, 0x38, 0x74, 0x50, 0x30, 0x1C, 0x16, 0x54, 0x3C, 0x10, 0x10, 0x00, 0x00},  // U+0024 $
++    {0x00, 0x00, 0x00, 0x60, 0x90, 0x90, 0x64, 0x18, 0x4C, 0x12, 0x12, 0x0C, 0x00, 0x00, 0x00, 0x00},  // U+0025 %
++    {0x00, 0x00, 0x00, 0x38, 0x60, 0x60, 0x20, 0x70, 0xDA, 0x8A, 0x44, 0x7E, 0x00, 0x00, 0x00, 0x00},  // U+0026 &
++    {0x00, 0x00, 0x00, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},  // U+0027 '
++    {0x00, 0x00, 0x08, 0x18, 0x10, 0x10, 0x10, 0x30, 0x10, 0x10, 0x10, 0x18, 0x08, 0x00, 0x00, 0x00},  // U+0028 (
++    {0x00, 0x00, 0x20, 0x10, 0x10, 0x18, 0x18, 0x08, 0x18, 0x18, 0x10, 0x10, 0x20, 0x00, 0x00, 0x00},  // U+0029 )
++    {0x00, 0x00, 0x00, 0x10, 0x54, 0x38, 0x38, 0x54, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},  // U+002A *
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x10, 0xFE, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00},  // U+002B +
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x30, 0x00, 0x00, 0x00},  // U+002C ,
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x38, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},  // U+002D -
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00},  // U+002E .
++    {0x00, 0x00, 0x00, 0x04, 0x0C, 0x08, 0x08, 0x10, 0x10, 0x20, 0x20, 0x40, 0x40, 0x00, 0x00, 0x00},  // U+002F /
++    {0x00, 0x00, 0x00, 0x38, 0x6C, 0x44, 0x44, 0x56, 0x44, 0x44, 0x6C, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+0030 0
++    {0x00, 0x00, 0x00, 0x78, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+0031 1
++    {0x00, 0x00, 0x00, 0x38, 0x4C, 0x04, 0x04, 0x08, 0x18, 0x30, 0x60, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+0032 2
++    {0x00, 0x00, 0x00, 0x38, 0x4C, 0x04, 0x0C, 0x38, 0x04, 0x04, 0x44, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+0033 3
++    {0x00, 0x00, 0x00, 0x0C, 0x1C, 0x1C, 0x2C, 0x4C, 0x4C, 0x7E, 0x0C, 0x0C, 0x00, 0x00, 0x00, 0x00},  // U+0034 4
++    {0x00, 0x00, 0x00, 0x7C, 0x40, 0x40, 0x78, 0x0C, 0x04, 0x04, 0x4C, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+0035 5
++    {0x00, 0x00, 0x00, 0x38, 0x64, 0x40, 0x78, 0x64, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+0036 6
++    {0x00, 0x00, 0x00, 0x7C, 0x04, 0x0C, 0x08, 0x08, 0x18, 0x10, 0x30, 0x20, 0x00, 0x00, 0x00, 0x00},  // U+0037 7
++    {0x00, 0x00, 0x00, 0x38, 0x64, 0x44, 0x64, 0x38, 0x44, 0x44, 0x44, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+0038 8
++    {0x00, 0x00, 0x00, 0x38, 0x4C, 0x44, 0x44, 0x4C, 0x3C, 0x04, 0x4C, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+0039 9
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x00, 0x00, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00},  // U+003A :
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x00, 0x00, 0x10, 0x10, 0x30, 0x00, 0x00, 0x00},  // U+003B ;
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x1C, 0x60, 0x60, 0x1C, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00},  // U+003C <
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFE, 0x00, 0xFE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},  // U+003D =
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0x70, 0x0E, 0x0E, 0x70, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00},  // U+003E >
++    {0x00, 0x00, 0x00, 0x38, 0x44, 0x04, 0x08, 0x10, 0x10, 0x00, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00},  // U+003F ?
++    {0x00, 0x00, 0x00, 0x00, 0x3C, 0x66, 0x42, 0x9E, 0xB2, 0xB2, 0x9E, 0x40, 0x60, 0x3C, 0x00, 0x00},  // U+0040 @
++    {0x00, 0x00, 0x00, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+0041 A
++    {0x00, 0x00, 0x00, 0x78, 0x44, 0x44, 0x44, 0x7C, 0x44, 0x46, 0x46, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+0042 B
++    {0x00, 0x00, 0x00, 0x3C, 0x20, 0x40, 0x40, 0x40, 0x40, 0x40, 0x20, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+0043 C
++    {0x00, 0x00, 0x00, 0x78, 0x4C, 0x44, 0x44, 0x46, 0x44, 0x44, 0x4C, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+0044 D
++    {0x00, 0x00, 0x00, 0x7C, 0x40, 0x40, 0x40, 0x7C, 0x40, 0x40, 0x40, 0x7E, 0x00, 0x00, 0x00, 0x00},  // U+0045 E
++    {0x00, 0x00, 0x00, 0x7E, 0x60, 0x60, 0x60, 0x7C, 0x60, 0x60, 0x60, 0x60, 0x00, 0x00, 0x00, 0x00},  // U+0046 F
++    {0x00, 0x00, 0x00, 0x3C, 0x64, 0x40, 0x40, 0x4E, 0x46, 0x46, 0x66, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+0047 G
++    {0x00, 0x00, 0x00, 0x44, 0x44, 0x44, 0x44, 0x7C, 0x44, 0x44, 0x44, 0x44, 0x00, 0x00, 0x00, 0x00},  // U+0048 H
++    {0x00, 0x00, 0x00, 0x7C, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+0049 I
++    {0x00, 0x00, 0x00, 0x3C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x08, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+004A J
++    {0x00, 0x00, 0x00, 0x46, 0x4C, 0x58, 0x70, 0x70, 0x58, 0x4C, 0x44, 0x46, 0x00, 0x00, 0x00, 0x00},  // U+004B K
++    {0x00, 0x00, 0x00, 0x60, 0x60, 0x60, 0x60, 0x60, 0x60, 0x60, 0x60, 0x7E, 0x00, 0x00, 0x00, 0x00},  // U+004C L
++    {0x00, 0x00, 0x00, 0xC6, 0xE6, 0xEE, 0xEA, 0xDA, 0xD2, 0xC2, 0xC2, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+004D M
++    {0x00, 0x00, 0x00, 0x64, 0x64, 0x64, 0x54, 0x54, 0x5C, 0x4C, 0x4C, 0x44, 0x00, 0x00, 0x00, 0x00},  // U+004E N
++    {0x00, 0x00, 0x00, 0x38, 0x64, 0x44, 0x46, 0x46, 0x46, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+004F O
++    {0x00, 0x00, 0x00, 0x7C, 0x46, 0x46, 0x46, 0x7C, 0x40, 0x40, 0x40, 0x40, 0x00, 0x00, 0x00, 0x00},  // U+0050 P
++    {0x00, 0x00, 0x00, 0x38, 0x64, 0x44, 0x46, 0x46, 0x46, 0x44, 0x64, 0x38, 0x0C, 0x04, 0x00, 0x00},  // U+0051 Q
++    {0x00, 0x00, 0x00, 0x78, 0x4C, 0x44, 0x44, 0x78, 0x4C, 0x44, 0x46, 0x42, 0x00, 0x00, 0x00, 0x00},  // U+0052 R
++    {0x00, 0x00, 0x00, 0x38, 0x64, 0x40, 0x60, 0x38, 0x04, 0x04, 0x44, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+0053 S
++    {0x00, 0x00, 0x00, 0xFE, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00},  // U+0054 T
++    {0x00, 0x00, 0x00, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+0055 U
++    {0x00, 0x00, 0x00, 0xC6, 0x46, 0x44, 0x64, 0x2C, 0x28, 0x28, 0x38, 0x18, 0x00, 0x00, 0x00, 0x00},  // U+0056 V
++    {0x00, 0x00, 0x00, 0x82, 0x82, 0xD2, 0xDA, 0x7E, 0x6C, 0x6C, 0x6C, 0x64, 0x00, 0x00, 0x00, 0x00},  // U+0057 W
++    {0x00, 0x00, 0x00, 0x46, 0x64, 0x28, 0x18, 0x18, 0x38, 0x2C, 0x44, 0xC6, 0x00, 0x00, 0x00, 0x00},  // U+0058 X
++    {0x00, 0x00, 0x00, 0xC6, 0x44, 0x2C, 0x38, 0x18, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00},  // U+0059 Y
++    {0x00, 0x00, 0x00, 0x7E, 0x04, 0x0C, 0x08, 0x10, 0x30, 0x20, 0x60, 0x7E, 0x00, 0x00, 0x00, 0x00},  // U+005A Z
++    {0x00, 0x00, 0x18, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x18, 0x00, 0x00, 0x00},  // U+005B [
++    {0x00, 0x00, 0x00, 0x40, 0x40, 0x20, 0x20, 0x10, 0x10, 0x08, 0x08, 0x0C, 0x04, 0x00, 0x00, 0x00},  // U+005C backslash
++    {0x00, 0x00, 0x38, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x38, 0x00, 0x00, 0x00},  // U+005D ]
++    {0x00, 0x00, 0x00, 0x18, 0x2C, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},  // U+005E ^
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFE, 0x00},  // U+005F _
++    {0x00, 0x00, 0x20, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},  // U+0060 `
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+0061 a
++    {0x00, 0x00, 0x40, 0x40, 0x40, 0x78, 0x64, 0x44, 0x46, 0x44, 0x64, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+0062 b
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x1C, 0x20, 0x60, 0x40, 0x60, 0x20, 0x1C, 0x00, 0x00, 0x00, 0x00},  // U+0063 c
++    {0x00, 0x00, 0x04, 0x04, 0x04, 0x3C, 0x6C, 0x44, 0x44, 0x44, 0x6C, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+0064 d
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x38, 0x64, 0x44, 0x7E, 0x40, 0x64, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+0065 e
++    {0x00, 0x00, 0x0C, 0x10, 0x10, 0x7C, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00},  // U+0066 f
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x3C, 0x6C, 0x44, 0x44, 0x44, 0x6C, 0x3C, 0x04, 0x0C, 0x38, 0x00},  // U+0067 g
++    {0x00, 0x00, 0x40, 0x40, 0x40, 0x78, 0x64, 0x44, 0x44, 0x44, 0x44, 0x44, 0x00, 0x00, 0x00, 0x00},  // U+0068 h
++    {0x00, 0x00, 0x10, 0x00, 0x00, 0x70, 0x10, 0x10, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+0069 i
++    {0x00, 0x00, 0x18, 0x00, 0x00, 0x38, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x10, 0x70, 0x00},  // U+006A j
++    {0x00, 0x00, 0x60, 0x60, 0x60, 0x64, 0x68, 0x70, 0x78, 0x68, 0x64, 0x66, 0x00, 0x00, 0x00, 0x00},  // U+006B k
++    {0x00, 0x00, 0x70, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1C, 0x00, 0x00, 0x00, 0x00},  // U+006C l
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x7C, 0x56, 0x52, 0x52, 0x52, 0x52, 0x52, 0x00, 0x00, 0x00, 0x00},  // U+006D m
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x78, 0x64, 0x44, 0x44, 0x44, 0x44, 0x44, 0x00, 0x00, 0x00, 0x00},  // U+006E n
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x38, 0x64, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+006F o
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x78, 0x64, 0x44, 0x46, 0x44, 0x64, 0x78, 0x40, 0x40, 0x40, 0x00},  // U+0070 p
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x3C, 0x6C, 0x44, 0x44, 0x44, 0x6C, 0x3C, 0x04, 0x04, 0x04, 0x00},  // U+0071 q
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x3E, 0x30, 0x20, 0x20, 0x20, 0x20, 0x20, 0x00, 0x00, 0x00, 0x00},  // U+0072 r
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x38, 0x64, 0x60, 0x38, 0x04, 0x44, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+0073 s
++    {0x00, 0x00, 0x00, 0x30, 0x30, 0x7C, 0x30, 0x30, 0x30, 0x30, 0x10, 0x1C, 0x00, 0x00, 0x00, 0x00},  // U+0074 t
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x44, 0x44, 0x44, 0x44, 0x44, 0x6C, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+0075 u
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x46, 0x44, 0x64, 0x2C, 0x28, 0x38, 0x18, 0x00, 0x00, 0x00, 0x00},  // U+0076 v
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x82, 0x82, 0xD2, 0x5E, 0x6C, 0x6C, 0x6C, 0x00, 0x00, 0x00, 0x00},  // U+0077 w
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x44, 0x2C, 0x38, 0x10, 0x38, 0x6C, 0x44, 0x00, 0x00, 0x00, 0x00},  // U+0078 x
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x46, 0x44, 0x64, 0x2C, 0x28, 0x38, 0x18, 0x10, 0x30, 0x60, 0x00},  // U+0079 y
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x7C, 0x0C, 0x08, 0x10, 0x30, 0x60, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+007A z
++    {0x00, 0x00, 0x0C, 0x10, 0x10, 0x10, 0x10, 0x70, 0x10, 0x10, 0x10, 0x10, 0x0C, 0x00, 0x00, 0x00},  // U+007B {
++    {0x00, 0x00, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00},  // U+007C |
++    {0x00, 0x00, 0x70, 0x10, 0x10, 0x10, 0x10, 0x0C, 0x18, 0x10, 0x10, 0x10, 0x70, 0x00, 0x00, 0x00},  // U+007D }
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x72, 0x1C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},  // U+007E ~
++    {0x00, 0x30, 0x10, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+00C0 À
++    {0x00, 0x08, 0x10, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+00C1 Á
++    {0x00, 0x18, 0x28, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+00C2 Â
++    {0x34, 0x38, 0x00, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+00C3 Ã
++    {0x00, 0x10, 0x10, 0x7C, 0x40, 0x40, 0x40, 0x7C, 0x40, 0x40, 0x40, 0x7E, 0x00, 0x00, 0x00, 0x00},  // U+00C8 È
++    {0x00, 0x08, 0x10, 0x7C, 0x40, 0x40, 0x40, 0x7C, 0x40, 0x40, 0x40, 0x7E, 0x00, 0x00, 0x00, 0x00},  // U+00C9 É
++    {0x00, 0x18, 0x28, 0x7C, 0x40, 0x40, 0x40, 0x7C, 0x40, 0x40, 0x40, 0x7E, 0x00, 0x00, 0x00, 0x00},  // U+00CA Ê
++    {0x00, 0x30, 0x10, 0x7C, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+00CC Ì
++    {0x00, 0x08, 0x10, 0x7C, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+00CD Í
++    {0x00, 0x30, 0x10, 0x38, 0x64, 0x44, 0x46, 0x46, 0x46, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+00D2 Ò
++    {0x00, 0x08, 0x10, 0x38, 0x64, 0x44, 0x46, 0x46, 0x46, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+00D3 Ó
++    {0x00, 0x18, 0x28, 0x38, 0x64, 0x44, 0x46, 0x46, 0x46, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+00D4 Ô
++    {0x34, 0x38, 0x00, 0x38, 0x64, 0x44, 0x46, 0x46, 0x46, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+00D5 Õ
++    {0x00, 0x30, 0x10, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+00D9 Ù
++    {0x00, 0x08, 0x10, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+00DA Ú
++    {0x00, 0x08, 0x10, 0xC6, 0x44, 0x2C, 0x38, 0x18, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00},  // U+00DD Ý
++    {0x00, 0x00, 0x20, 0x10, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+00E0 à
++    {0x00, 0x00, 0x08, 0x10, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+00E1 á
++    {0x00, 0x00, 0x10, 0x28, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+00E2 â
++    {0x00, 0x00, 0x00, 0x34, 0x28, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+00E3 ã
++    {0x00, 0x00, 0x20, 0x10, 0x00, 0x38, 0x64, 0x44, 0x7E, 0x40, 0x64, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+00E8 è
++    {0x00, 0x00, 0x08, 0x10, 0x00, 0x38, 0x64, 0x44, 0x7E, 0x40, 0x64, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+00E9 é
++    {0x00, 0x00, 0x18, 0x28, 0x00, 0x38, 0x64, 0x44, 0x7E, 0x40, 0x64, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+00EA ê
++    {0x00, 0x00, 0x20, 0x10, 0x00, 0x70, 0x10, 0x10, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+00EC ì
++    {0x00, 0x00, 0x08, 0x10, 0x00, 0x70, 0x10, 0x10, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+00ED í
++    {0x00, 0x00, 0x20, 0x10, 0x00, 0x38, 0x64, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+00F2 ò
++    {0x00, 0x00, 0x08, 0x10, 0x00, 0x38, 0x64, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+00F3 ó
++    {0x00, 0x00, 0x10, 0x28, 0x00, 0x38, 0x64, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+00F4 ô
++    {0x00, 0x00, 0x00, 0x34, 0x28, 0x38, 0x64, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+00F5 õ
++    {0x00, 0x00, 0x20, 0x10, 0x00, 0x44, 0x44, 0x44, 0x44, 0x44, 0x6C, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+00F9 ù
++    {0x00, 0x00, 0x08, 0x10, 0x00, 0x44, 0x44, 0x44, 0x44, 0x44, 0x6C, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+00FA ú
++    {0x00, 0x00, 0x08, 0x10, 0x00, 0x46, 0x44, 0x64, 0x2C, 0x28, 0x38, 0x18, 0x10, 0x30, 0x60, 0x00},  // U+00FD ý
++    {0x28, 0x38, 0x00, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+0102 Ă
++    {0x00, 0x00, 0x28, 0x38, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+0103 ă
++    {0x00, 0x00, 0x00, 0x78, 0x4C, 0x44, 0x44, 0xF6, 0x44, 0x44, 0x4C, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+0110 Đ
++    {0x00, 0x00, 0x04, 0x1E, 0x04, 0x3C, 0x6C, 0x44, 0x44, 0x44, 0x6C, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+0111 đ
++    {0x34, 0x38, 0x00, 0x7C, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+0128 Ĩ
++    {0x00, 0x00, 0x00, 0x34, 0x28, 0x70, 0x10, 0x10, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+0129 ĩ
++    {0x34, 0x38, 0x00, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+0168 Ũ
++    {0x00, 0x00, 0x00, 0x34, 0x28, 0x44, 0x44, 0x44, 0x44, 0x44, 0x6C, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+0169 ũ
++    {0x00, 0x00, 0x00, 0x7A, 0xCE, 0xCC, 0x84, 0x84, 0x84, 0xCC, 0xC8, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+01A0 Ơ
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x7A, 0x4E, 0xCC, 0x84, 0xCC, 0x48, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+01A1 ơ
++    {0x00, 0x00, 0x00, 0x8C, 0x8E, 0x8C, 0x8C, 0x8C, 0x8C, 0x8C, 0xC8, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+01AF Ư
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x8A, 0x8E, 0x8C, 0x88, 0x88, 0xC8, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+01B0 ư
++    {0x00, 0x00, 0x00, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x10, 0x00, 0x00},  // U+1EA0 Ạ
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x10, 0x00, 0x00},  // U+1EA1 ạ
++    {0x18, 0x08, 0x10, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+1EA2 Ả
++    {0x00, 0x00, 0x18, 0x08, 0x10, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+1EA3 ả
++    {0x00, 0x18, 0x28, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+1EA4 Ấ
++    {0x00, 0x00, 0x10, 0x28, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+1EA5 ấ
++    {0x00, 0x18, 0x28, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+1EA6 Ầ
++    {0x00, 0x00, 0x10, 0x28, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+1EA7 ầ
++    {0x00, 0x18, 0x28, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+1EA8 Ẩ
++    {0x00, 0x00, 0x10, 0x28, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+1EA9 ẩ
++    {0x00, 0x18, 0x28, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+1EAA Ẫ
++    {0x00, 0x00, 0x10, 0x28, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+1EAB ẫ
++    {0x00, 0x18, 0x28, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x10, 0x00, 0x00},  // U+1EAC Ậ
++    {0x00, 0x00, 0x10, 0x28, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x10, 0x00, 0x00},  // U+1EAD ậ
++    {0x28, 0x38, 0x00, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+1EAE Ắ
++    {0x00, 0x00, 0x28, 0x38, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+1EAF ắ
++    {0x30, 0x38, 0x38, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+1EB0 Ằ
++    {0x20, 0x10, 0x28, 0x38, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+1EB1 ằ
++    {0x28, 0x38, 0x00, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+1EB2 Ẳ
++    {0x00, 0x00, 0x28, 0x38, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+1EB3 ẳ
++    {0x28, 0x38, 0x00, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x00, 0x00, 0x00},  // U+1EB4 Ẵ
++    {0x00, 0x00, 0x28, 0x38, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+1EB5 ẵ
++    {0x28, 0x38, 0x00, 0x18, 0x38, 0x28, 0x28, 0x6C, 0x64, 0x7C, 0x46, 0xC2, 0x00, 0x10, 0x00, 0x00},  // U+1EB6 Ặ
++    {0x00, 0x00, 0x28, 0x38, 0x00, 0x78, 0x04, 0x04, 0x3C, 0x44, 0x4C, 0x7C, 0x00, 0x10, 0x00, 0x00},  // U+1EB7 ặ
++    {0x00, 0x00, 0x00, 0x7C, 0x40, 0x40, 0x40, 0x7C, 0x40, 0x40, 0x40, 0x7E, 0x00, 0x10, 0x00, 0x00},  // U+1EB8 Ẹ
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x38, 0x64, 0x44, 0x7E, 0x40, 0x64, 0x3C, 0x00, 0x10, 0x00, 0x00},  // U+1EB9 ẹ
++    {0x18, 0x08, 0x10, 0x7C, 0x40, 0x40, 0x40, 0x7C, 0x40, 0x40, 0x40, 0x7E, 0x00, 0x00, 0x00, 0x00},  // U+1EBA Ẻ
++    {0x00, 0x00, 0x18, 0x08, 0x10, 0x38, 0x64, 0x44, 0x7E, 0x40, 0x64, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+1EBB ẻ
++    {0x34, 0x28, 0x00, 0x7C, 0x40, 0x40, 0x40, 0x7C, 0x40, 0x40, 0x40, 0x7E, 0x00, 0x00, 0x00, 0x00},  // U+1EBC Ẽ
++    {0x00, 0x00, 0x00, 0x34, 0x28, 0x38, 0x64, 0x44, 0x7E, 0x40, 0x64, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+1EBD ẽ
++    {0x00, 0x18, 0x28, 0x7C, 0x40, 0x40, 0x40, 0x7C, 0x40, 0x40, 0x40, 0x7E, 0x00, 0x00, 0x00, 0x00},  // U+1EBE Ế
++    {0x00, 0x00, 0x18, 0x28, 0x00, 0x38, 0x64, 0x44, 0x7E, 0x40, 0x64, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+1EBF ế
++    {0x00, 0x18, 0x28, 0x7C, 0x40, 0x40, 0x40, 0x7C, 0x40, 0x40, 0x40, 0x7E, 0x00, 0x00, 0x00, 0x00},  // U+1EC0 Ề
++    {0x00, 0x00, 0x18, 0x28, 0x00, 0x38, 0x64, 0x44, 0x7E, 0x40, 0x64, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+1EC1 ề
++    {0x00, 0x18, 0x28, 0x7C, 0x40, 0x40, 0x40, 0x7C, 0x40, 0x40, 0x40, 0x7E, 0x00, 0x00, 0x00, 0x00},  // U+1EC2 Ể
++    {0x00, 0x00, 0x18, 0x28, 0x00, 0x38, 0x64, 0x44, 0x7E, 0x40, 0x64, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+1EC3 ể
++    {0x00, 0x18, 0x28, 0x7C, 0x40, 0x40, 0x40, 0x7C, 0x40, 0x40, 0x40, 0x7E, 0x00, 0x00, 0x00, 0x00},  // U+1EC4 Ễ
++    {0x00, 0x00, 0x18, 0x28, 0x00, 0x38, 0x64, 0x44, 0x7E, 0x40, 0x64, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+1EC5 ễ
++    {0x00, 0x18, 0x28, 0x7C, 0x40, 0x40, 0x40, 0x7C, 0x40, 0x40, 0x40, 0x7E, 0x00, 0x10, 0x00, 0x00},  // U+1EC6 Ệ
++    {0x00, 0x00, 0x18, 0x28, 0x00, 0x38, 0x64, 0x44, 0x7E, 0x40, 0x64, 0x3C, 0x00, 0x10, 0x00, 0x00},  // U+1EC7 ệ
++    {0x18, 0x08, 0x10, 0x7C, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+1EC8 Ỉ
++    {0x00, 0x00, 0x18, 0x08, 0x10, 0x70, 0x10, 0x10, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x00, 0x00, 0x00},  // U+1EC9 ỉ
++    {0x00, 0x00, 0x00, 0x7C, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x10, 0x00, 0x00},  // U+1ECA Ị
++    {0x00, 0x00, 0x10, 0x00, 0x00, 0x70, 0x10, 0x10, 0x10, 0x10, 0x10, 0x7C, 0x00, 0x10, 0x00, 0x00},  // U+1ECB ị
++    {0x00, 0x00, 0x00, 0x38, 0x64, 0x44, 0x46, 0x46, 0x46, 0x44, 0x64, 0x38, 0x00, 0x10, 0x00, 0x00},  // U+1ECC Ọ
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x38, 0x64, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x10, 0x00, 0x00},  // U+1ECD ọ
++    {0x18, 0x08, 0x10, 0x38, 0x64, 0x44, 0x46, 0x46, 0x46, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+1ECE Ỏ
++    {0x00, 0x00, 0x18, 0x08, 0x10, 0x38, 0x64, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+1ECF ỏ
++    {0x00, 0x18, 0x28, 0x38, 0x64, 0x44, 0x46, 0x46, 0x46, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+1ED0 Ố
++    {0x00, 0x00, 0x10, 0x28, 0x00, 0x38, 0x64, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+1ED1 ố
++    {0x00, 0x18, 0x28, 0x38, 0x64, 0x44, 0x46, 0x46, 0x46, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+1ED2 Ồ
++    {0x00, 0x00, 0x10, 0x28, 0x00, 0x38, 0x64, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+1ED3 ồ
++    {0x00, 0x18, 0x28, 0x38, 0x64, 0x44, 0x46, 0x46, 0x46, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+1ED4 Ổ
++    {0x00, 0x00, 0x10, 0x28, 0x00, 0x38, 0x64, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+1ED5 ổ
++    {0x00, 0x18, 0x28, 0x38, 0x64, 0x44, 0x46, 0x46, 0x46, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+1ED6 Ỗ
++    {0x00, 0x00, 0x10, 0x28, 0x00, 0x38, 0x64, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+1ED7 ỗ
++    {0x00, 0x18, 0x28, 0x38, 0x64, 0x44, 0x46, 0x46, 0x46, 0x44, 0x64, 0x38, 0x00, 0x10, 0x00, 0x00},  // U+1ED8 Ộ
++    {0x00, 0x00, 0x10, 0x28, 0x00, 0x38, 0x64, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x10, 0x00, 0x00},  // U+1ED9 ộ
++    {0x00, 0x10, 0x20, 0x7A, 0xCE, 0xCC, 0x84, 0x84, 0x84, 0xCC, 0xC8, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EDA Ớ
++    {0x00, 0x00, 0x18, 0x10, 0x00, 0x7A, 0x4E, 0xCC, 0x84, 0xCC, 0x48, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EDB ớ
++    {0x00, 0x20, 0x30, 0x7A, 0xCE, 0xCC, 0x84, 0x84, 0x84, 0xCC, 0xC8, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EDC Ờ
++    {0x00, 0x00, 0x60, 0x20, 0x00, 0x7A, 0x4E, 0xCC, 0x84, 0xCC, 0x48, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EDD ờ
++    {0x30, 0x10, 0x20, 0x7A, 0xCE, 0xCC, 0x84, 0x84, 0x84, 0xCC, 0xC8, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EDE Ở
++    {0x00, 0x00, 0x30, 0x10, 0x20, 0x7A, 0x4E, 0xCC, 0x84, 0xCC, 0x48, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EDF ở
++    {0x68, 0x58, 0x00, 0x7A, 0xCE, 0xCC, 0x84, 0x84, 0x84, 0xCC, 0xC8, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EE0 Ỡ
++    {0x00, 0x00, 0x00, 0x68, 0x58, 0x7A, 0x4E, 0xCC, 0x84, 0xCC, 0x48, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EE1 ỡ
++    {0x00, 0x00, 0x00, 0x7A, 0xCE, 0xCC, 0x84, 0x84, 0x84, 0xCC, 0xC8, 0x78, 0x00, 0x30, 0x00, 0x00},  // U+1EE2 Ợ
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x7A, 0x4E, 0xCC, 0x84, 0xCC, 0x48, 0x78, 0x00, 0x30, 0x00, 0x00},  // U+1EE3 ợ
++    {0x00, 0x00, 0x00, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x10, 0x00, 0x00},  // U+1EE4 Ụ
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x44, 0x44, 0x44, 0x44, 0x44, 0x6C, 0x3C, 0x00, 0x10, 0x00, 0x00},  // U+1EE5 ụ
++    {0x18, 0x08, 0x10, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x64, 0x38, 0x00, 0x00, 0x00, 0x00},  // U+1EE6 Ủ
++    {0x00, 0x00, 0x18, 0x08, 0x10, 0x44, 0x44, 0x44, 0x44, 0x44, 0x6C, 0x3C, 0x00, 0x00, 0x00, 0x00},  // U+1EE7 ủ
++    {0x00, 0x10, 0x20, 0x8C, 0x8E, 0x8C, 0x8C, 0x8C, 0x8C, 0x8C, 0xC8, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EE8 Ứ
++    {0x00, 0x00, 0x10, 0x20, 0x00, 0x8A, 0x8E, 0x8C, 0x88, 0x88, 0xC8, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EE9 ứ
++    {0x00, 0x20, 0x20, 0x8C, 0x8E, 0x8C, 0x8C, 0x8C, 0x8C, 0x8C, 0xC8, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EEA Ừ
++    {0x00, 0x00, 0x40, 0x20, 0x00, 0x8A, 0x8E, 0x8C, 0x88, 0x88, 0xC8, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EEB ừ
++    {0x00, 0x00, 0x00, 0x8C, 0x8E, 0x8C, 0x8C, 0x8C, 0x8C, 0x8C, 0xC8, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EEC Ử
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x8A, 0x8E, 0x8C, 0x88, 0x88, 0xC8, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EED ử
++    {0x68, 0x50, 0x00, 0x8C, 0x8E, 0x8C, 0x8C, 0x8C, 0x8C, 0x8C, 0xC8, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EEE Ữ
++    {0x00, 0x00, 0x00, 0x68, 0x50, 0x8A, 0x8E, 0x8C, 0x88, 0x88, 0xC8, 0x78, 0x00, 0x00, 0x00, 0x00},  // U+1EEF ữ
++    {0x00, 0x00, 0x00, 0x8C, 0x8E, 0x8C, 0x8C, 0x8C, 0x8C, 0x8C, 0xC8, 0x78, 0x00, 0x20, 0x00, 0x00},  // U+1EF0 Ự
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x8A, 0x8E, 0x8C, 0x88, 0x88, 0xC8, 0x78, 0x00, 0x20, 0x00, 0x00},  // U+1EF1 ự
++    {0x00, 0x30, 0x10, 0xC6, 0x44, 0x2C, 0x38, 0x18, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00},  // U+1EF2 Ỳ
++    {0x00, 0x00, 0x20, 0x10, 0x00, 0x46, 0x44, 0x64, 0x2C, 0x28, 0x38, 0x18, 0x10, 0x30, 0x60, 0x00},  // U+1EF3 ỳ
++    {0x00, 0x00, 0x00, 0xC6, 0x44, 0x2C, 0x38, 0x18, 0x10, 0x10, 0x10, 0x10, 0x00, 0x10, 0x00, 0x00},  // U+1EF4 Ỵ
++    {0x00, 0x00, 0x00, 0x00, 0x00, 0x46, 0x44, 0x64, 0x2C, 0x28, 0x38, 0x18, 0x10, 0x3C, 0x60, 0x00},  // U+1EF5 ỵ
++    {0x18, 0x08, 0x10, 0xC6, 0x44, 0x2C, 0x38, 0x18, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00},  // U+1EF6 Ỷ
++    {0x00, 0x00, 0x18, 0x08, 0x10, 0x46, 0x44, 0x64, 0x2C, 0x28, 0x38, 0x18, 0x10, 0x30, 0x60, 0x00},  // U+1EF7 ỷ
++    {0x34, 0x38, 0x00, 0xC6, 0x44, 0x2C, 0x38, 0x18, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00, 0x00, 0x00},  // U+1EF8 Ỹ
++    {0x00, 0x00, 0x00, 0x34, 0x28, 0x46, 0x44, 0x64, 0x2C, 0x28, 0x38, 0x18, 0x10, 0x30, 0x60, 0x00},  // U+1EF9 ỹ
++};
+diff --git a/main/boards/esp32s3-weact-dog/leg_servos.cc b/main/boards/esp32s3-weact-dog/leg_servos.cc
+new file mode 100644
+index 0000000..59fbda4
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/leg_servos.cc
+@@ -0,0 +1,262 @@
++#include "leg_servos.h"
++
++#include <esp_log.h>
++#include <esp_timer.h>
++
++#include <cmath>
++
++#define TAG "LegServos"
++
++// ---------------------------------------------------------------------------
++// Motion library (logical degrees, 90 = neutral; 0 = keep this leg as is).
++// Order of legs: FL, FR, RL, RR.
++// ---------------------------------------------------------------------------
++namespace {
++struct Motion {
++    const void* frames;
++    int count;
++    bool quick;
++};
++#define KF(fl, fr, rl, rr, hold) {{fl, fr, rl, rr}, hold}
++
++struct KeyframeDef {
++    uint8_t angle[LEG_COUNT];
++    uint16_t hold_ms;
++};
++
++const KeyframeDef kStand[] = {KF(90, 90, 90, 90, 0)};
++const KeyframeDef kSit[] = {KF(0, 0, 125, 125, 200), KF(100, 100, 0, 0, 0)};
++const KeyframeDef kCrouch[] = {KF(65, 65, 65, 65, 0)};
++const KeyframeDef kWiggle[] = {
++    KF(90, 90, 90, 90, 0),  KF(0, 0, 80, 100, 40), KF(0, 0, 100, 80, 40),
++    KF(0, 0, 80, 100, 40),  KF(0, 0, 100, 80, 40), KF(0, 0, 80, 100, 40),
++    KF(0, 0, 100, 80, 40),  KF(0, 0, 90, 90, 0),
++};
++const KeyframeDef kSoftWiggle[] = {
++    KF(96, 84, 0, 0, 60), KF(84, 96, 0, 0, 60), KF(96, 84, 0, 0, 60), KF(90, 90, 0, 0, 0),
++};
++const KeyframeDef kWave[] = {
++    KF(90, 90, 90, 90, 0), KF(130, 0, 0, 0, 120), KF(110, 0, 0, 0, 40), KF(130, 0, 0, 0, 40),
++    KF(110, 0, 0, 0, 40),  KF(130, 0, 0, 0, 120), KF(90, 0, 0, 0, 0),
++};
++const KeyframeDef kBreathe[] = {
++    KF(94, 94, 0, 0, 400), KF(0, 0, 94, 94, 400), KF(90, 90, 0, 0, 300), KF(0, 0, 90, 90, 0),
++};
++#undef KF
++#define MOTION(arr, quick) Motion{arr, (int)(sizeof(arr) / sizeof(arr[0])), quick}
++
++Motion MotionFor(LegMotion m) {
++    switch (m) {
++        case LegMotion::kStand: return MOTION(kStand, false);
++        case LegMotion::kQuickStand: return MOTION(kStand, true);
++        case LegMotion::kSit: return MOTION(kSit, false);
++        case LegMotion::kCrouch: return MOTION(kCrouch, false);
++        case LegMotion::kWiggle: return MOTION(kWiggle, false);
++        case LegMotion::kSoftWiggle: return MOTION(kSoftWiggle, false);
++        case LegMotion::kWave: return MOTION(kWave, false);
++        case LegMotion::kBreathe: return MOTION(kBreathe, false);
++        default: return Motion{nullptr, 0, false};
++    }
++}
++}  // namespace
++
++const char* LegMotionName(LegMotion m) {
++    switch (m) {
++        case LegMotion::kNone: return "none";
++        case LegMotion::kStand: return "stand";
++        case LegMotion::kQuickStand: return "quick_stand";
++        case LegMotion::kSit: return "sit";
++        case LegMotion::kCrouch: return "crouch";
++        case LegMotion::kWiggle: return "wiggle";
++        case LegMotion::kSoftWiggle: return "soft_wiggle";
++        case LegMotion::kWave: return "wave";
++        case LegMotion::kBreathe: return "idle_breathe";
++        case LegMotion::kRelax: return "relax";
++    }
++    return "?";
++}
++
++static_assert(sizeof(KeyframeDef) == sizeof(uint8_t) * LEG_COUNT + sizeof(uint16_t),
++              "keyframe layout");
++
++LegServos::LegServos() {
++    for (int i = 0; i < LEG_COUNT; ++i) {
++        legs_[i].channel = (ledc_channel_t)(SERVO_LEDC_FIRST_CHANNEL + i);
++    }
++}
++
++int64_t LegServos::NowMs() { return esp_timer_get_time() / 1000; }
++
++void LegServos::Begin() {
++    if (task_ != nullptr) return;
++    queue_ = xQueueCreate(4, sizeof(uint8_t));
++    xTaskCreate(&LegServos::TaskEntry, "legs", SERVO_TASK_STACK, this, SERVO_TASK_PRIORITY, &task_);
++}
++
++void LegServos::AttachSequential() {
++    if (queue_ == nullptr) return;
++    uint8_t cmd = kCmdAttach;
++    xQueueSend(queue_, &cmd, 0);
++}
++
++void LegServos::Play(LegMotion motion) {
++    if (queue_ == nullptr || motion == LegMotion::kNone) return;
++    uint8_t cmd = (uint8_t)motion;
++    if (xQueueSend(queue_, &cmd, 0) != pdTRUE) {
++        ESP_LOGW(TAG, "motion queue full, dropping %s", LegMotionName(motion));
++    }
++}
++
++void LegServos::WriteAngle(int leg, float logical) {
++    // Clamp the logical angle, apply mount direction + trim, clamp again.
++    logical = std::fmin(std::fmax(logical, (float)SERVO_MIN_DEG), (float)SERVO_MAX_DEG);
++    const LegConfig& cfg = kLegConfig[leg];
++    float phys = cfg.invert ? 180.0f - logical : logical;
++    phys += cfg.trim_deg;
++    phys = std::fmin(std::fmax(phys, (float)SERVO_MIN_DEG), (float)SERVO_MAX_DEG);
++
++    float pulse_us = SERVO_PULSE_MIN_US + (SERVO_PULSE_MAX_US - SERVO_PULSE_MIN_US) * phys / 180.0f;
++    uint32_t period_us = 1000000 / SERVO_PWM_HZ;
++    uint32_t duty = (uint32_t)(pulse_us * (float)(1 << SERVO_PWM_BITS) / (float)period_us);
++    ledc_set_duty(LEDC_LOW_SPEED_MODE, legs_[leg].channel, duty);
++    ledc_update_duty(LEDC_LOW_SPEED_MODE, legs_[leg].channel);  // also re-enables output
++    legs_[leg].attached = true;
++}
++
++void LegServos::Detach(int leg) {
++    ledc_stop(LEDC_LOW_SPEED_MODE, legs_[leg].channel, 0);
++    legs_[leg].attached = false;
++}
++
++void LegServos::LoadMotion(LegMotion m) {
++    if (m == LegMotion::kRelax) {
++        frames_ = nullptr;
++        frame_count_ = 0;
++        for (int i = 0; i < LEG_COUNT; ++i) {
++            legs_[i].target = legs_[i].current;
++            legs_[i].moving = false;
++            if (legs_[i].attached) Detach(i);
++        }
++        busy_ = false;
++        return;
++    }
++    Motion mo = MotionFor(m);
++    if (mo.frames == nullptr) return;
++    ESP_LOGI(TAG, "play %s", LegMotionName(m));
++    frames_ = static_cast<const Keyframe*>(mo.frames);
++    frame_count_ = mo.count;
++    frame_index_ = 0;
++    frame_active_ = false;
++    frame_settled_ms_ = 0;
++    quick_ = mo.quick;
++    busy_ = true;
++}
++
++void LegServos::TaskEntry(void* arg) { static_cast<LegServos*>(arg)->Loop(); }
++
++void LegServos::Loop() {
++    const float step = (float)SERVO_SLEW_DEG_PER_S * SERVO_TICK_MS / 1000.0f;
++    TickType_t last = xTaskGetTickCount();
++    while (true) {
++        uint8_t cmd;
++        while (xQueueReceive(queue_, &cmd, 0) == pdTRUE) {
++            if (cmd == kCmdAttach) {
++                if (initialized_) continue;
++                ledc_timer_config_t timer = {};
++                timer.speed_mode = LEDC_LOW_SPEED_MODE;
++                timer.duty_resolution = (ledc_timer_bit_t)SERVO_PWM_BITS;
++                timer.timer_num = SERVO_LEDC_TIMER;
++                timer.freq_hz = SERVO_PWM_HZ;
++                timer.clk_cfg = LEDC_AUTO_CLK;
++                ESP_ERROR_CHECK(ledc_timer_config(&timer));
++                for (int i = 0; i < LEG_COUNT; ++i) {
++                    ledc_channel_config_t ch = {};
++                    ch.gpio_num = kLegConfig[i].gpio;
++                    ch.speed_mode = LEDC_LOW_SPEED_MODE;
++                    ch.channel = legs_[i].channel;
++                    ch.timer_sel = SERVO_LEDC_TIMER;
++                    ch.duty = 0;
++                    ch.hpoint = 0;
++                    ESP_ERROR_CHECK(ledc_channel_config(&ch));
++                    // One servo at a time; position before first power-up is
++                    // unknown, so this single jump is unavoidable.
++                    legs_[i].current = legs_[i].target = SERVO_NEUTRAL_DEG;
++                    WriteAngle(i, SERVO_NEUTRAL_DEG);
++                    legs_[i].settled_ms = NowMs();
++                    ESP_LOGI(TAG, "attached leg %d on GPIO%d", i, (int)kLegConfig[i].gpio);
++                    vTaskDelay(pdMS_TO_TICKS(SERVO_INIT_GAP_MS));
++                }
++                initialized_ = true;
++            } else if (initialized_) {
++                LoadMotion((LegMotion)cmd);
++            }
++        }
++
++        int64_t now = NowMs();
++        if (initialized_) {
++            // 1) start the next keyframe
++            if (frames_ != nullptr && !frame_active_ && frame_index_ < frame_count_) {
++                const Keyframe& kf = frames_[frame_index_];
++                for (int i = 0; i < LEG_COUNT; ++i) {
++                    if (kf.angle[i] != 0) legs_[i].target = kf.angle[i];
++                }
++                frame_active_ = true;
++                frame_settled_ms_ = 0;
++            }
++
++            // 2) start legs that need to move, max SERVO_MAX_MOVING, staggered
++            int moving = 0;
++            for (auto& l : legs_) moving += l.moving ? 1 : 0;
++            for (int i = 0; i < LEG_COUNT; ++i) {
++                Leg& l = legs_[i];
++                if (l.moving || std::fabs(l.target - l.current) < 0.5f) continue;
++                if (moving >= SERVO_MAX_MOVING || now - last_start_ms_ < SERVO_STAGGER_MS) break;
++                l.moving = true;
++                last_start_ms_ = now;
++                moving++;
++                if (!l.attached) WriteAngle(i, l.current);  // re-attach at known position
++            }
++
++            // 3) ramp moving legs
++            bool all_settled = true;
++            for (int i = 0; i < LEG_COUNT; ++i) {
++                Leg& l = legs_[i];
++                if (l.moving) {
++                    float d = l.target - l.current;
++                    if (std::fabs(d) <= step) {
++                        l.current = l.target;
++                        l.moving = false;
++                        l.settled_ms = now;
++                    } else {
++                        l.current += d > 0 ? step : -step;
++                    }
++                    WriteAngle(i, l.current);
++                }
++                if (l.moving || std::fabs(l.target - l.current) >= 0.5f) all_settled = false;
++            }
++
++            // 4) keyframe hold / advance
++            if (frame_active_ && all_settled) {
++                if (frame_settled_ms_ == 0) frame_settled_ms_ = now;
++                uint16_t hold = quick_ ? 0 : frames_[frame_index_].hold_ms;
++                if (now - frame_settled_ms_ >= hold) {
++                    frame_active_ = false;
++                    if (++frame_index_ >= frame_count_) {
++                        frames_ = nullptr;
++                        busy_ = false;
++                    }
++                }
++            }
++
++            // 5) cut PWM on legs holding a pose for too long
++            for (int i = 0; i < LEG_COUNT; ++i) {
++                Leg& l = legs_[i];
++                if (l.attached && !l.moving && std::fabs(l.target - l.current) < 0.5f &&
++                    now - l.settled_ms >= SERVO_DETACH_AFTER_MS) {
++                    Detach(i);
++                }
++            }
++        }
++        vTaskDelayUntil(&last, pdMS_TO_TICKS(SERVO_TICK_MS));
++    }
++}
+diff --git a/main/boards/esp32s3-weact-dog/leg_servos.h b/main/boards/esp32s3-weact-dog/leg_servos.h
+new file mode 100644
+index 0000000..4b6b3f5
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/leg_servos.h
+@@ -0,0 +1,78 @@
++// LegServos: 4 symbolic servo "legs" with hard power-safety rules:
++//  - at most SERVO_MAX_MOVING servos in motion, start-ups staggered
++//  - slew-rate limited ramps, never an instant jump (except the very first attach)
++//  - PWM detached after a pose is held SERVO_DETACH_AFTER_MS
++//  - runs in its own task; Play() never blocks the caller
++#pragma once
++
++#include <driver/ledc.h>
++#include <freertos/FreeRTOS.h>
++#include <freertos/queue.h>
++#include <freertos/task.h>
++
++#include <cstdint>
++
++#include "dog_config.h"
++
++enum class LegMotion : uint8_t {
++    kNone,
++    kStand,
++    kQuickStand,  // stand, but with no pauses between keyframes
++    kSit,
++    kCrouch,
++    kWiggle,      // alternating rear shake
++    kSoftWiggle,  // small front shake (while speaking)
++    kWave,        // front-left paw wave
++    kBreathe,     // very small slow motion
++    kRelax,       // stop PWM on all legs now
++};
++
++const char* LegMotionName(LegMotion m);
++
++class LegServos {
++public:
++    LegServos();
++    // Creates the task. Servos stay unpowered until AttachSequential().
++    void Begin();
++    // Sequentially attach every servo at neutral (call once Wi-Fi + audio are up).
++    void AttachSequential();
++    // Replace whatever is playing with this motion (non-blocking).
++    void Play(LegMotion motion);
++    bool attached() const { return initialized_; }
++    bool busy() const { return busy_; }
++
++private:
++    struct Keyframe {
++        uint8_t angle[LEG_COUNT];  // logical degrees; 0 = keep current
++        uint16_t hold_ms;
++    };
++    struct Leg {
++        float current = SERVO_NEUTRAL_DEG;
++        float target = SERVO_NEUTRAL_DEG;
++        bool attached = false;
++        bool moving = false;
++        int64_t settled_ms = 0;
++        ledc_channel_t channel = LEDC_CHANNEL_0;
++    };
++    enum Cmd : uint8_t { kCmdAttach = 0xF0 };
++
++    static void TaskEntry(void* arg);
++    void Loop();
++    void LoadMotion(LegMotion m);
++    void WriteAngle(int leg, float logical_deg);
++    void Detach(int leg);
++    static int64_t NowMs();
++
++    Leg legs_[LEG_COUNT];
++    const Keyframe* frames_ = nullptr;
++    int frame_count_ = 0;
++    int frame_index_ = 0;
++    bool frame_active_ = false;
++    bool quick_ = false;
++    int64_t frame_settled_ms_ = 0;
++    int64_t last_start_ms_ = 0;
++    volatile bool initialized_ = false;
++    volatile bool busy_ = false;
++    QueueHandle_t queue_ = nullptr;
++    TaskHandle_t task_ = nullptr;
++};
+diff --git a/main/boards/esp32s3-weact-dog/rgb565_canvas.cc b/main/boards/esp32s3-weact-dog/rgb565_canvas.cc
+new file mode 100644
+index 0000000..82ac496
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/rgb565_canvas.cc
+@@ -0,0 +1,238 @@
++#include "rgb565_canvas.h"
++
++#include <esp_heap_caps.h>
++#include <esp_log.h>
++
++#include <algorithm>
++#include <cstring>
++#include <utility>
++
++#include "font_8x16.h"
++
++#define TAG "Rgb565Canvas"
++
++static inline uint16_t to_panel(uint16_t c) { return (uint16_t)((c >> 8) | (c << 8)); }
++
++void DirtyBox::add(int ax0, int ay0, int ax1, int ay1) {
++    if (empty()) {
++        x0 = ax0; y0 = ay0; x1 = ax1; y1 = ay1;
++        return;
++    }
++    x0 = std::min(x0, ax0);
++    y0 = std::min(y0, ay0);
++    x1 = std::max(x1, ax1);
++    y1 = std::max(y1, ay1);
++}
++
++Rgb565Canvas::Rgb565Canvas(int width, int height) : w_(width), h_(height) {
++    size_t bytes = (size_t)w_ * h_ * sizeof(uint16_t);
++    buf_ = (uint16_t*)heap_caps_calloc(1, bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
++    if (buf_ == nullptr) {
++        ESP_LOGW(TAG, "No PSRAM for frame buffer, trying internal RAM");
++        buf_ = (uint16_t*)heap_caps_calloc(1, bytes, MALLOC_CAP_8BIT);
++    }
++    if (buf_ == nullptr) {
++        ESP_LOGE(TAG, "Frame buffer allocation failed (%u bytes)", (unsigned)bytes);
++    }
++}
++
++Rgb565Canvas::~Rgb565Canvas() { heap_caps_free(buf_); }
++
++void Rgb565Canvas::track(int x0, int y0, int x1, int y1) { cur_.add(x0, y0, x1, y1); }
++
++void Rgb565Canvas::hline(int x, int y, int w, uint16_t color) {
++    if (w < 0) {
++        x += w + 1;
++        w = -w;
++    }
++    if (y < 0 || y >= h_ || w <= 0) return;
++    int xe = x + w - 1;
++    if (x < 0) x = 0;
++    if (xe >= w_) xe = w_ - 1;
++    if (xe < x) return;
++    uint16_t pc = to_panel(color);
++    uint16_t* p = buf_ + (size_t)y * w_ + x;
++    for (int i = x; i <= xe; ++i) *p++ = pc;
++    track(x, y, xe, y);
++}
++
++void Rgb565Canvas::fillRect(int x, int y, int w, int h, uint16_t color) {
++    if (!buf_ || w <= 0 || h <= 0) return;
++    int x0 = std::max(x, 0), y0 = std::max(y, 0);
++    int x1 = std::min(x + w - 1, w_ - 1), y1 = std::min(y + h - 1, h_ - 1);
++    if (x1 < x0 || y1 < y0) return;
++    uint16_t pc = to_panel(color);
++    for (int yy = y0; yy <= y1; ++yy) {
++        uint16_t* p = buf_ + (size_t)yy * w_ + x0;
++        for (int xx = x0; xx <= x1; ++xx) *p++ = pc;
++    }
++    track(x0, y0, x1, y1);
++}
++
++void Rgb565Canvas::fillScreen(uint16_t color) {
++    if (!buf_) return;
++    uint16_t pc = to_panel(color);
++    for (size_t i = 0; i < (size_t)w_ * h_; ++i) buf_[i] = pc;
++    all_dirty_ = true;
++}
++
++void Rgb565Canvas::clearDisplay() {
++    // Only the area drawn in the previous frame can be non-background.
++    if (!buf_ || prev_.empty()) return;
++    uint16_t pc = to_panel(bg_);
++    for (int y = prev_.y0; y <= prev_.y1; ++y) {
++        uint16_t* p = buf_ + (size_t)y * w_ + prev_.x0;
++        for (int x = prev_.x0; x <= prev_.x1; ++x) *p++ = pc;
++    }
++}
++
++// Port of Adafruit_GFX::fillCircleHelper (BSD license, Adafruit Industries).
++void Rgb565Canvas::fillCircleHelper(int x0, int y0, int r, uint8_t corners, int delta,
++                                    uint16_t color) {
++    int f = 1 - r, ddF_x = 1, ddF_y = -2 * r, x = 0, y = r, px = x, py = y;
++    delta++;
++    auto vline = [&](int vx, int vy, int vh) { fillRect(vx, vh < 0 ? vy + vh + 1 : vy, 1, vh < 0 ? -vh : vh, color); };
++    while (x < y) {
++        if (f >= 0) {
++            y--;
++            ddF_y += 2;
++            f += ddF_y;
++        }
++        x++;
++        ddF_x += 2;
++        f += ddF_x;
++        if (x < (y + 1)) {
++            if (corners & 1) vline(x0 + x, y0 - y, 2 * y + delta);
++            if (corners & 2) vline(x0 - x, y0 - y, 2 * y + delta);
++        }
++        if (y != py) {
++            if (corners & 1) vline(x0 + py, y0 - px, 2 * px + delta);
++            if (corners & 2) vline(x0 - py, y0 - px, 2 * px + delta);
++            py = y;
++        }
++        px = x;
++    }
++}
++
++// Port of Adafruit_GFX::fillRoundRect.
++void Rgb565Canvas::fillRoundRect(int x, int y, int w, int h, int r, uint16_t color) {
++    if (w <= 0 || h <= 0) return;
++    int max_radius = ((w < h) ? w : h) / 2;
++    if (r > max_radius) r = max_radius;
++    if (r < 0) r = 0;
++    fillRect(x + r, y, w - 2 * r, h, color);
++    if (r > 0) {
++        fillCircleHelper(x + w - r - 1, y + r, r, 1, h - 2 * r - 1, color);
++        fillCircleHelper(x + r, y + r, r, 2, h - 2 * r - 1, color);
++    }
++}
++
++// Port of Adafruit_GFX::fillTriangle.
++void Rgb565Canvas::fillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t color) {
++    int a, b, y, last;
++    if (y0 > y1) { std::swap(y0, y1); std::swap(x0, x1); }
++    if (y1 > y2) { std::swap(y2, y1); std::swap(x2, x1); }
++    if (y0 > y1) { std::swap(y0, y1); std::swap(x0, x1); }
++
++    if (y0 == y2) {
++        a = b = x0;
++        if (x1 < a) a = x1; else if (x1 > b) b = x1;
++        if (x2 < a) a = x2; else if (x2 > b) b = x2;
++        hline(a, y0, b - a + 1, color);
++        return;
++    }
++    int dx01 = x1 - x0, dy01 = y1 - y0, dx02 = x2 - x0, dy02 = y2 - y0, dx12 = x2 - x1,
++        dy12 = y2 - y1;
++    int32_t sa = 0, sb = 0;
++    last = (y1 == y2) ? y1 : y1 - 1;
++    for (y = y0; y <= last; y++) {
++        a = x0 + sa / dy01;
++        b = x0 + sb / dy02;
++        sa += dx01;
++        sb += dx02;
++        if (a > b) std::swap(a, b);
++        hline(a, y, b - a + 1, color);
++    }
++    sa = (int32_t)dx12 * (y - y1);
++    sb = (int32_t)dx02 * (y - y0);
++    for (; y <= y2; y++) {
++        a = x1 + sa / dy12;
++        b = x0 + sb / dy02;
++        sa += dx12;
++        sb += dx02;
++        if (a > b) std::swap(a, b);
++        hline(a, y, b - a + 1, color);
++    }
++}
++
++DirtyBox Rgb565Canvas::takeDirty() {
++    DirtyBox out;
++    if (all_dirty_) {
++        out.add(0, 0, w_ - 1, h_ - 1);
++        all_dirty_ = false;
++    } else {
++        out = prev_;
++        out.add(cur_);
++    }
++    prev_ = cur_;
++    cur_.reset();
++    return out;
++}
++
++void Rgb565Canvas::markAllDirty() { all_dirty_ = true; }
++
++// ---- text ------------------------------------------------------------------
++static uint32_t next_codepoint(const char*& s) {
++    const unsigned char* p = (const unsigned char*)s;
++    uint32_t cp;
++    int extra;
++    if (p[0] < 0x80) { cp = p[0]; extra = 0; }
++    else if ((p[0] & 0xE0) == 0xC0) { cp = p[0] & 0x1F; extra = 1; }
++    else if ((p[0] & 0xF0) == 0xE0) { cp = p[0] & 0x0F; extra = 2; }
++    else if ((p[0] & 0xF8) == 0xF0) { cp = p[0] & 0x07; extra = 3; }
++    else { s++; return '?'; }
++    s++;
++    for (int i = 0; i < extra; ++i) {
++        if ((((const unsigned char*)s)[0] & 0xC0) != 0x80) return '?';
++        cp = (cp << 6) | (((const unsigned char*)s)[0] & 0x3F);
++        s++;
++    }
++    return cp;
++}
++
++static const uint8_t* find_glyph(uint32_t cp) {
++    int lo = 0, hi = (int)(sizeof(kFont8x16Codepoints) / sizeof(kFont8x16Codepoints[0])) - 1;
++    while (lo <= hi) {
++        int mid = (lo + hi) / 2;
++        if (kFont8x16Codepoints[mid] == cp) return kFont8x16Bitmaps[mid];
++        if (kFont8x16Codepoints[mid] < cp) lo = mid + 1; else hi = mid - 1;
++    }
++    return nullptr;
++}
++
++int Rgb565Canvas::textWidth(const char* utf8, int scale) {
++    int n = 0;
++    while (*utf8) {
++        next_codepoint(utf8);
++        n++;
++    }
++    return n * 8 * scale;
++}
++
++int Rgb565Canvas::drawText(int x, int y, const char* utf8, uint16_t color, int scale) {
++    int start = x;
++    while (*utf8) {
++        uint32_t cp = next_codepoint(utf8);
++        const uint8_t* g = find_glyph(cp);
++        if (!g) g = find_glyph('?');
++        for (int row = 0; row < 16 && g; ++row) {
++            uint8_t bits = g[row];
++            for (int col = 0; col < 8; ++col) {
++                if (bits & (0x80 >> col)) fillRect(x + col * scale, y + row * scale, scale, scale, color);
++            }
++        }
++        x += 8 * scale;
++        if (x >= w_) break;
++    }
++    return x - start;
++}
+diff --git a/main/boards/esp32s3-weact-dog/rgb565_canvas.h b/main/boards/esp32s3-weact-dog/rgb565_canvas.h
+new file mode 100644
+index 0000000..5ba16d4
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/rgb565_canvas.h
+@@ -0,0 +1,61 @@
++// Minimal Adafruit_GFX-compatible RGB565 canvas (PSRAM frame buffer + dirty box).
++// Only the primitives RoboEyes needs, plus a small bitmap text renderer.
++#pragma once
++
++#include <cstdint>
++
++struct DirtyBox {
++    int x0 = 0, y0 = 0, x1 = -1, y1 = -1;  // inclusive; empty when x1 < x0
++    bool empty() const { return x1 < x0 || y1 < y0; }
++    void reset() { x0 = y0 = 0; x1 = y1 = -1; }
++    void add(int ax0, int ay0, int ax1, int ay1);
++    void add(const DirtyBox& o) {
++        if (!o.empty()) add(o.x0, o.y0, o.x1, o.y1);
++    }
++};
++
++class Rgb565Canvas {
++public:
++    Rgb565Canvas(int width, int height);
++    ~Rgb565Canvas();
++    bool ok() const { return buf_ != nullptr; }
++
++    int width() const { return w_; }
++    int height() const { return h_; }
++    // Big-endian (panel order) pixels, row-major.
++    const uint16_t* buffer() const { return buf_; }
++
++    // ---- Adafruit_GFX-style API used by RoboEyes --------------------------
++    // clearDisplay() only clears what was drawn in the previous frame.
++    void clearDisplay();
++    void display() {}  // pushing is done by the owner (EyesDisplay)
++    void fillRect(int x, int y, int w, int h, uint16_t color);
++    void fillRoundRect(int x, int y, int w, int h, int r, uint16_t color);
++    void fillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t color);
++    void fillScreen(uint16_t color);
++    void setBackground(uint16_t color) { bg_ = color; }
++
++    // ---- Text (UTF-8, ASCII + Vietnamese; unknown glyphs drawn as '?') ----
++    // Returns the number of pixels used horizontally.
++    int drawText(int x, int y, const char* utf8, uint16_t color, int scale);
++    static int textWidth(const char* utf8, int scale);
++    static int glyphW() { return 8; }
++    static int glyphH() { return 16; }
++
++    // Area that must be pushed to the panel: last frame + this frame.
++    // Call after drawing; resets the per-frame tracking.
++    DirtyBox takeDirty();
++    void markAllDirty();
++
++private:
++    void hline(int x, int y, int w, uint16_t color);
++    void fillCircleHelper(int x0, int y0, int r, uint8_t corners, int delta, uint16_t color);
++    void track(int x0, int y0, int x1, int y1);
++
++    int w_, h_;
++    uint16_t* buf_ = nullptr;
++    DirtyBox cur_;   // drawn since last takeDirty()
++    DirtyBox prev_;  // drawn in the frame before (needs clearing / re-push)
++    bool all_dirty_ = true;
++    uint16_t bg_ = 0;
++};
+diff --git a/main/boards/esp32s3-weact-dog/roboeyes_port.h b/main/boards/esp32s3-weact-dog/roboeyes_port.h
+new file mode 100644
+index 0000000..74b3d9b
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/roboeyes_port.h
+@@ -0,0 +1,751 @@
++/*
++ * FluxGarage RoboEyes for OLED Displays V 1.1.1
++ * Draws smoothly animated robot eyes on OLED displays, based on the Adafruit GFX 
++ * library's graphics primitives, such as rounded rectangles and triangles.
++ *   
++ * Copyright (C) 2024-2025 Dennis Hoelscher
++ * www.fluxgarage.com
++ * www.youtube.com/@FluxGarage
++ *
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program. If not, see <https://www.gnu.org/licenses/>.
++ */
++
++
++/*
++ * ESP-IDF PORT NOTE (xiaozhi dog robot, 2026):
++ *  - Taken from FluxGarage RoboEyes V1.1.1 (GPL-3.0-or-later, see LICENSE-RoboEyes.txt).
++ *  - Animation logic in drawEyes() is unchanged.
++ *  - Changes: no Arduino dependency (millis/random/byte provided below), everything
++ *    wrapped in namespace roboeyes, #define constants turned into constexpr (they
++ *    clashed with ESP-IDF names), colours widened from uint8_t to uint16_t (RGB565),
++ *    the two global colour variables moved into the class, and the space-between
++ *    members declared before the coordinates that read them (fixes UB), and a
++ *    sweatScale factor so the sweat drops are visible on 320x240.
++ *  - The "display" template argument only needs: clearDisplay(), display(),
++ *    fillRoundRect(x,y,w,h,r,color), fillTriangle(x0,y0,x1,y1,x2,y2,color).
++ */
++
++#ifndef _FLUXGARAGE_ROBOEYES_H
++#define _FLUXGARAGE_ROBOEYES_H
++
++#include <cstdint>
++#include <esp_random.h>
++#include <esp_timer.h>
++
++namespace roboeyes {
++
++using byte = uint8_t;
++inline unsigned long millis() { return (unsigned long)(esp_timer_get_time() / 1000); }
++inline long random(long howbig) { return howbig <= 0 ? 0 : (long)(esp_random() % (uint32_t)howbig); }
++
++
++
++// For mood type switch
++constexpr unsigned char DEFAULT = 0;
++constexpr unsigned char TIRED = 1;
++constexpr unsigned char ANGRY = 2;
++constexpr unsigned char HAPPY = 3;
++
++// For turning things on or off
++constexpr unsigned char ON = 1;
++constexpr unsigned char OFF = 0;
++
++// For switch "predefined positions"
++constexpr unsigned char N = 1; // north, top center
++constexpr unsigned char NE = 2; // north-east, top right
++constexpr unsigned char E = 3; // east, middle right
++constexpr unsigned char SE = 4; // south-east, bottom right
++constexpr unsigned char S = 5; // south, bottom center
++constexpr unsigned char SW = 6; // south-west, bottom left
++constexpr unsigned char W = 7; // west, middle left
++constexpr unsigned char NW = 8; // north-west, top left 
++// for middle center set "DEFAULT"
++
++
++// Constructor: takes a reference to the active Adafruit display object (e.g., Adafruit_SSD1327)
++// Eg: roboEyes<Adafruit_SSD1327> = eyes(display);
++template<typename AdafruitDisplay>
++class RoboEyes
++{
++private:
++
++// Yes, everything is currently still accessible. Be responsible and don't mess things up :)
++
++public:
++
++// Reference to Adafruit display object
++AdafruitDisplay *display;
++
++// Display colors (port: moved into the class, RGB565)
++uint16_t BGCOLOR = 0; // background and overlays
++uint16_t MAINCOLOR = 1; // drawings
++
++// For general setup - screen size and max. frame rate
++int screenWidth = 128; // OLED display width, in pixels
++int screenHeight = 64; // OLED display height, in pixels
++int frameInterval = 20; // default value for 50 frames per second (1000/50 = 20 milliseconds)
++unsigned long fpsTimer = 0; // for timing the frames per second
++
++// For controlling mood types and expressions
++bool tired = 0;
++bool angry = 0;
++bool happy = 0;
++bool curious = 0; // if true, draw the outer eye larger when looking left or right
++bool cyclops = 0; // if true, draw only one eye
++bool eyeL_open = 0; // left eye opened or closed?
++bool eyeR_open = 0; // right eye opened or closed?
++
++
++//*********************************************************************************************
++//  Eyes Geometry
++//*********************************************************************************************
++
++// EYE LEFT - size and border radius
++int eyeLwidthDefault = 36;
++int eyeLheightDefault = 36;
++int eyeLwidthCurrent = eyeLwidthDefault;
++int eyeLheightCurrent = 1; // start with closed eye, otherwise set to eyeLheightDefault
++int eyeLwidthNext = eyeLwidthDefault;
++int eyeLheightNext = eyeLheightDefault;
++int eyeLheightOffset = 0;
++// Border Radius
++byte eyeLborderRadiusDefault = 8;
++byte eyeLborderRadiusCurrent = eyeLborderRadiusDefault;
++byte eyeLborderRadiusNext = eyeLborderRadiusDefault;
++
++// EYE RIGHT - size and border radius
++int eyeRwidthDefault = eyeLwidthDefault;
++int eyeRheightDefault = eyeLheightDefault;
++int eyeRwidthCurrent = eyeRwidthDefault;
++int eyeRheightCurrent = 1; // start with closed eye, otherwise set to eyeRheightDefault
++int eyeRwidthNext = eyeRwidthDefault;
++int eyeRheightNext = eyeRheightDefault;
++int eyeRheightOffset = 0;
++// Border Radius
++byte eyeRborderRadiusDefault = 8;
++byte eyeRborderRadiusCurrent = eyeRborderRadiusDefault;
++byte eyeRborderRadiusNext = eyeRborderRadiusDefault;
++
++// Space between eyes
++// (port: moved above the coordinates that use it; was read uninitialized)
++int spaceBetweenDefault = 10;
++int spaceBetweenCurrent = spaceBetweenDefault;
++int spaceBetweenNext = 10;
++
++// EYE LEFT - Coordinates
++int eyeLxDefault = ((screenWidth)-(eyeLwidthDefault+spaceBetweenDefault+eyeRwidthDefault))/2;
++int eyeLyDefault = ((screenHeight-eyeLheightDefault)/2);
++int eyeLx = eyeLxDefault;
++int eyeLy = eyeLyDefault;
++int eyeLxNext = eyeLx;
++int eyeLyNext = eyeLy;
++
++// EYE RIGHT - Coordinates
++int eyeRxDefault = eyeLx+eyeLwidthCurrent+spaceBetweenDefault;
++int eyeRyDefault = eyeLy;
++int eyeRx = eyeRxDefault;
++int eyeRy = eyeRyDefault;
++int eyeRxNext = eyeRx;
++int eyeRyNext = eyeRy;
++
++// BOTH EYES 
++// Eyelid top size
++byte eyelidsHeightMax = eyeLheightDefault/2; // top eyelids max height
++byte eyelidsTiredHeight = 0;
++byte eyelidsTiredHeightNext = eyelidsTiredHeight;
++byte eyelidsAngryHeight = 0;
++byte eyelidsAngryHeightNext = eyelidsAngryHeight;
++// Bottom happy eyelids offset
++byte eyelidsHappyBottomOffsetMax = (eyeLheightDefault/2)+3;
++byte eyelidsHappyBottomOffset = 0;
++byte eyelidsHappyBottomOffsetNext = 0;
++
++
++//*********************************************************************************************
++//  Macro Animations
++//*********************************************************************************************
++
++// Animation - horizontal flicker/shiver
++bool hFlicker = 0;
++bool hFlickerAlternate = 0;
++byte hFlickerAmplitude = 2;
++
++// Animation - vertical flicker/shiver
++bool vFlicker = 0;
++bool vFlickerAlternate = 0;
++byte vFlickerAmplitude = 10;
++
++// Animation - auto blinking
++bool autoblinker = 0; // activate auto blink animation
++int blinkInterval = 1; // basic interval between each blink in full seconds
++int blinkIntervalVariation = 4; // interval variaton range in full seconds, random number inside of given range will be add to the basic blinkInterval, set to 0 for no variation
++unsigned long blinktimer = 0; // for organising eyeblink timing
++
++// Animation - idle mode: eyes looking in random directions
++bool idle = 0;
++int idleInterval = 1; // basic interval between each eye repositioning in full seconds
++int idleIntervalVariation = 3; // interval variaton range in full seconds, random number inside of given range will be add to the basic idleInterval, set to 0 for no variation
++unsigned long idleAnimationTimer = 0; // for organising eyeblink timing
++
++// Animation - eyes confused: eyes shaking left and right
++bool confused = 0;
++unsigned long confusedAnimationTimer = 0;
++int confusedAnimationDuration = 500;
++bool confusedToggle = 1;
++
++// Animation - eyes laughing: eyes shaking up and down
++bool laugh = 0;
++unsigned long laughAnimationTimer = 0;
++int laughAnimationDuration = 500;
++bool laughToggle = 1;
++
++// Animation - sweat on the forehead
++bool sweat = 0;
++byte sweatBorderradius = 3;
++float sweatScale = 1; // port: drop size/position multiplier for big screens
++
++// Sweat drop 1
++int sweat1XPosInitial = 2;
++int sweat1XPos;
++float sweat1YPos = 2;
++int sweat1YPosMax;
++float sweat1Height = 2;
++float sweat1Width = 1;
++
++// Sweat drop 2
++int sweat2XPosInitial = 2;
++int sweat2XPos;
++float sweat2YPos = 2;
++int sweat2YPosMax;
++float sweat2Height = 2;
++float sweat2Width = 1;
++
++// Sweat drop 3
++int sweat3XPosInitial = 2;
++int sweat3XPos;
++float sweat3YPos = 2;
++int sweat3YPosMax;
++float sweat3Height = 2;
++float sweat3Width = 1;
++
++
++//*********************************************************************************************
++//  GENERAL METHODS
++//*********************************************************************************************
++
++RoboEyes(AdafruitDisplay &disp) : display(&disp) {};
++
++// Startup RoboEyes with defined screen-width, screen-height and max. frames per second
++void begin(int width, int height, byte frameRate) {
++	screenWidth = width; // OLED display width, in pixels
++	screenHeight = height; // OLED display height, in pixels
++  display->clearDisplay(); // clear the display buffer
++  display->display(); // show empty screen
++  eyeLheightCurrent = 1; // start with closed eyes
++  eyeRheightCurrent = 1; // start with closed eyes
++  setFramerate(frameRate); // calculate frame interval based on defined frameRate
++}
++
++void update(){
++  // Limit drawing updates to defined max framerate
++  if(millis()-fpsTimer >= frameInterval){
++    drawEyes();
++    fpsTimer = millis();
++  }
++}
++
++
++//*********************************************************************************************
++//  SETTERS METHODS
++//*********************************************************************************************
++
++// Calculate frame interval based on defined frameRate
++void setFramerate(byte fps){
++  frameInterval = 1000/fps;
++}
++
++// Set color values
++void setDisplayColors(uint16_t background, uint16_t main) {
++  BGCOLOR = background; // background and overlays, choose 0 for monochrome displays and 0x00 for grayscale displays such as SSD1322
++  MAINCOLOR = main; // drawings, choose 1 for monochrome displays and 0x0F for grayscale displays such as SSD1322 (0x0F = maximum brightness)
++}
++
++void setWidth(byte leftEye, byte rightEye) {
++	eyeLwidthNext = leftEye;
++	eyeRwidthNext = rightEye;
++  eyeLwidthDefault = leftEye;
++  eyeRwidthDefault = rightEye;
++}
++
++void setHeight(byte leftEye, byte rightEye) {
++	eyeLheightNext = leftEye;
++	eyeRheightNext = rightEye;
++  eyeLheightDefault = leftEye;
++  eyeRheightDefault = rightEye;
++}
++
++// Set border radius for left and right eye
++void setBorderradius(byte leftEye, byte rightEye) {
++	eyeLborderRadiusNext = leftEye;
++	eyeRborderRadiusNext = rightEye;
++  eyeLborderRadiusDefault = leftEye;
++  eyeRborderRadiusDefault = rightEye;
++}
++
++// Set space between the eyes, can also be negative
++void setSpacebetween(int space) {
++  spaceBetweenNext = space;
++  spaceBetweenDefault = space;
++}
++
++// Set mood expression
++void setMood(unsigned char mood)
++  {
++    switch (mood)
++    {
++    case TIRED:
++      tired=1; 
++      angry=0; 
++      happy=0;
++      break;
++    case ANGRY:
++      tired=0; 
++      angry=1; 
++      happy=0;
++      break;
++    case HAPPY:
++      tired=0; 
++      angry=0; 
++      happy=1;
++      break;
++    default:
++      tired=0; 
++      angry=0; 
++      happy=0;
++      break;
++    }
++  }
++
++// Set predefined position
++void setPosition(unsigned char position)
++  {
++    switch (position)
++    {
++    case N:
++      // North, top center
++      eyeLxNext = getScreenConstraint_X()/2;
++      eyeLyNext = 0;
++      break;
++    case NE:
++      // North-east, top right
++      eyeLxNext = getScreenConstraint_X();
++      eyeLyNext = 0;
++      break;
++    case E:
++      // East, middle right
++      eyeLxNext = getScreenConstraint_X();
++      eyeLyNext = getScreenConstraint_Y()/2;
++      break;
++    case SE:
++      // South-east, bottom right
++      eyeLxNext = getScreenConstraint_X();
++      eyeLyNext = getScreenConstraint_Y();
++      break;
++    case S:
++      // South, bottom center
++      eyeLxNext = getScreenConstraint_X()/2;
++      eyeLyNext = getScreenConstraint_Y();
++      break;
++    case SW:
++      // South-west, bottom left
++      eyeLxNext = 0;
++      eyeLyNext = getScreenConstraint_Y();
++      break;
++    case W:
++      // West, middle left
++      eyeLxNext = 0;
++      eyeLyNext = getScreenConstraint_Y()/2;
++      break;
++    case NW:
++      // North-west, top left
++      eyeLxNext = 0;
++      eyeLyNext = 0;
++      break;
++    default:
++      // Middle center
++      eyeLxNext = getScreenConstraint_X()/2;
++      eyeLyNext = getScreenConstraint_Y()/2;
++      break;
++    }
++  }
++
++// Set automated eye blinking, minimal blink interval in full seconds and blink interval variation range in full seconds
++void setAutoblinker(bool active, int interval, int variation){
++  autoblinker = active;
++  blinkInterval = interval;
++  blinkIntervalVariation = variation;
++}
++void setAutoblinker(bool active){
++  autoblinker = active;
++}
++
++// Set idle mode - automated eye repositioning, minimal time interval in full seconds and time interval variation range in full seconds
++void setIdleMode(bool active, int interval, int variation){
++  idle = active;
++  idleInterval = interval;
++  idleIntervalVariation = variation;
++}
++void setIdleMode(bool active) {
++  idle = active;
++}
++
++// Set curious mode - the respectively outer eye gets larger when looking left or right
++void setCuriosity(bool curiousBit) {
++  curious = curiousBit;
++}
++
++// Set cyclops mode - show only one eye 
++void setCyclops(bool cyclopsBit) {
++  cyclops = cyclopsBit;
++}
++
++// Set horizontal flickering (displacing eyes left/right)
++void setHFlicker (bool flickerBit, byte Amplitude) {
++  hFlicker = flickerBit; // turn flicker on or off
++  hFlickerAmplitude = Amplitude; // define amplitude of flickering in pixels
++}
++void setHFlicker (bool flickerBit) {
++  hFlicker = flickerBit; // turn flicker on or off
++}
++
++// Set vertical flickering (displacing eyes up/down)
++void setVFlicker (bool flickerBit, byte Amplitude) {
++  vFlicker = flickerBit; // turn flicker on or off
++  vFlickerAmplitude = Amplitude; // define amplitude of flickering in pixels
++}
++void setVFlicker (bool flickerBit) {
++  vFlicker = flickerBit; // turn flicker on or off
++}
++
++void setSweat (bool sweatBit) {
++  sweat = sweatBit; // turn sweat on or off
++}
++
++
++//*********************************************************************************************
++//  GETTERS METHODS
++//*********************************************************************************************
++
++// Returns the max x position for left eye
++int getScreenConstraint_X(){
++  return screenWidth-eyeLwidthCurrent-spaceBetweenCurrent-eyeRwidthCurrent;
++} 
++
++// Returns the max y position for left eye
++int getScreenConstraint_Y(){
++ return screenHeight-eyeLheightDefault; // using default height here, because height will vary when blinking and in curious mode
++}
++
++
++//*********************************************************************************************
++//  BASIC ANIMATION METHODS
++//*********************************************************************************************
++
++// BLINKING FOR BOTH EYES AT ONCE
++// Close both eyes
++void close() {
++	eyeLheightNext = 1; // closing left eye
++  eyeRheightNext = 1; // closing right eye
++  eyeL_open = 0; // left eye not opened (=closed)
++	eyeR_open = 0; // right eye not opened (=closed)
++}
++
++// Open both eyes
++void open() {
++  eyeL_open = 1; // left eye opened - if true, drawEyes() will take care of opening eyes again
++	eyeR_open = 1; // right eye opened
++}
++
++// Trigger eyeblink animation
++void blink() {
++  close();
++  open();
++}
++
++// BLINKING FOR SINGLE EYES, CONTROL EACH EYE SEPARATELY
++// Close eye(s)
++void close(bool left, bool right) {
++  if(left){
++    eyeLheightNext = 1; // blinking left eye
++    eyeL_open = 0; // left eye not opened (=closed)
++  }
++  if(right){
++      eyeRheightNext = 1; // blinking right eye
++      eyeR_open = 0; // right eye not opened (=closed)
++  }
++}
++
++// Open eye(s)
++void open(bool left, bool right) {
++  if(left){
++    eyeL_open = 1; // left eye opened - if true, drawEyes() will take care of opening eyes again
++  }
++  if(right){
++    eyeR_open = 1; // right eye opened
++  }
++}
++
++// Trigger eyeblink(s) animation
++void blink(bool left, bool right) {
++  close(left, right);
++  open(left, right);
++}
++
++
++//*********************************************************************************************
++//  MACRO ANIMATION METHODS
++//*********************************************************************************************
++
++// Play confused animation - one shot animation of eyes shaking left and right
++void anim_confused() {
++	confused = 1;
++}
++
++// Play laugh animation - one shot animation of eyes shaking up and down
++void anim_laugh() {
++  laugh = 1;
++}
++
++//*********************************************************************************************
++//  PRE-CALCULATIONS AND ACTUAL DRAWINGS
++//*********************************************************************************************
++
++void drawEyes(){
++
++  //// PRE-CALCULATIONS - EYE SIZES AND VALUES FOR ANIMATION TWEENINGS ////
++
++  // Vertical size offset for larger eyes when looking left or right (curious gaze)
++  if(curious){
++    if(eyeLxNext<=10){eyeLheightOffset=8;}
++    else if (eyeLxNext>=(getScreenConstraint_X()-10) && cyclops){eyeLheightOffset=8;}
++    else{eyeLheightOffset=0;} // left eye
++    if(eyeRxNext>=screenWidth-eyeRwidthCurrent-10){eyeRheightOffset=8;}
++    else{eyeRheightOffset=0;} // right eye
++  } else {
++    eyeLheightOffset=0; // reset height offset for left eye
++    eyeRheightOffset=0; // reset height offset for right eye
++  }
++
++  // Left eye height
++  eyeLheightCurrent = (eyeLheightCurrent + eyeLheightNext + eyeLheightOffset)/2;
++  eyeLy+= ((eyeLheightDefault-eyeLheightCurrent)/2); // vertical centering of eye when closing
++  eyeLy-= eyeLheightOffset/2;
++  // Right eye height
++  eyeRheightCurrent = (eyeRheightCurrent + eyeRheightNext + eyeRheightOffset)/2;
++  eyeRy+= (eyeRheightDefault-eyeRheightCurrent)/2; // vertical centering of eye when closing
++  eyeRy-= eyeRheightOffset/2;
++
++
++  // Open eyes again after closing them
++	if(eyeL_open){
++  	if(eyeLheightCurrent <= 1 + eyeLheightOffset){eyeLheightNext = eyeLheightDefault;} 
++  }
++  if(eyeR_open){
++  	if(eyeRheightCurrent <= 1 + eyeRheightOffset){eyeRheightNext = eyeRheightDefault;} 
++  }
++
++  // Left eye width
++  eyeLwidthCurrent = (eyeLwidthCurrent + eyeLwidthNext)/2;
++  // Right eye width
++  eyeRwidthCurrent = (eyeRwidthCurrent + eyeRwidthNext)/2;
++
++
++  // Space between eyes
++  spaceBetweenCurrent = (spaceBetweenCurrent + spaceBetweenNext)/2;
++
++  // Left eye coordinates
++  eyeLx = (eyeLx + eyeLxNext)/2;
++  eyeLy = (eyeLy + eyeLyNext)/2;
++  // Right eye coordinates
++  eyeRxNext = eyeLxNext+eyeLwidthCurrent+spaceBetweenCurrent; // right eye's x position depends on left eyes position + the space between
++  eyeRyNext = eyeLyNext; // right eye's y position should be the same as for the left eye
++  eyeRx = (eyeRx + eyeRxNext)/2;
++  eyeRy = (eyeRy + eyeRyNext)/2;
++
++  // Left eye border radius
++  eyeLborderRadiusCurrent = (eyeLborderRadiusCurrent + eyeLborderRadiusNext)/2;
++  // Right eye border radius
++  eyeRborderRadiusCurrent = (eyeRborderRadiusCurrent + eyeRborderRadiusNext)/2;
++  
++
++  //// APPLYING MACRO ANIMATIONS ////
++
++	if(autoblinker){
++		if(millis() >= blinktimer){
++		blink();
++		blinktimer = millis()+(blinkInterval*1000)+(random(blinkIntervalVariation)*1000); // calculate next time for blinking
++		}
++	}
++
++  // Laughing - eyes shaking up and down for the duration defined by laughAnimationDuration (default = 500ms)
++  if(laugh){
++    if(laughToggle){
++      setVFlicker(1, 5);
++      laughAnimationTimer = millis();
++      laughToggle = 0;
++    } else if(millis() >= laughAnimationTimer+laughAnimationDuration){
++      setVFlicker(0, 0);
++      laughToggle = 1;
++      laugh=0; 
++    }
++  }
++
++  // Confused - eyes shaking left and right for the duration defined by confusedAnimationDuration (default = 500ms)
++  if(confused){
++    if(confusedToggle){
++      setHFlicker(1, 20);
++      confusedAnimationTimer = millis();
++      confusedToggle = 0;
++    } else if(millis() >= confusedAnimationTimer+confusedAnimationDuration){
++      setHFlicker(0, 0);
++      confusedToggle = 1;
++      confused=0; 
++    }
++  }
++
++  // Idle - eyes moving to random positions on screen
++  if(idle){
++    if(millis() >= idleAnimationTimer){
++      eyeLxNext = random(getScreenConstraint_X());
++      eyeLyNext = random(getScreenConstraint_Y());
++      idleAnimationTimer = millis()+(idleInterval*1000)+(random(idleIntervalVariation)*1000); // calculate next time for eyes repositioning
++    }
++  }
++
++  // Adding offsets for horizontal flickering/shivering
++  if(hFlicker){
++    if(hFlickerAlternate) {
++      eyeLx += hFlickerAmplitude;
++      eyeRx += hFlickerAmplitude;
++    } else {
++      eyeLx -= hFlickerAmplitude;
++      eyeRx -= hFlickerAmplitude;
++    }
++    hFlickerAlternate = !hFlickerAlternate;
++  }
++
++  // Adding offsets for horizontal flickering/shivering
++  if(vFlicker){
++    if(vFlickerAlternate) {
++      eyeLy += vFlickerAmplitude;
++      eyeRy += vFlickerAmplitude;
++    } else {
++      eyeLy -= vFlickerAmplitude;
++      eyeRy -= vFlickerAmplitude;
++    }
++    vFlickerAlternate = !vFlickerAlternate;
++  }
++
++  // Cyclops mode, set second eye's size and space between to 0
++  if(cyclops){
++    eyeRwidthCurrent = 0;
++    eyeRheightCurrent = 0;
++    spaceBetweenCurrent = 0;
++  }
++
++  //// ACTUAL DRAWINGS ////
++
++  display->clearDisplay(); // start with a blank screen
++
++  // Draw basic eye rectangles
++  display->fillRoundRect(eyeLx, eyeLy, eyeLwidthCurrent, eyeLheightCurrent, eyeLborderRadiusCurrent, MAINCOLOR); // left eye
++  if (!cyclops){
++    display->fillRoundRect(eyeRx, eyeRy, eyeRwidthCurrent, eyeRheightCurrent, eyeRborderRadiusCurrent, MAINCOLOR); // right eye
++  }
++
++  // Prepare mood type transitions
++  if (tired){eyelidsTiredHeightNext = eyeLheightCurrent/2; eyelidsAngryHeightNext = 0;} else{eyelidsTiredHeightNext = 0;}
++  if (angry){eyelidsAngryHeightNext = eyeLheightCurrent/2; eyelidsTiredHeightNext = 0;} else{eyelidsAngryHeightNext = 0;}
++  if (happy){eyelidsHappyBottomOffsetNext = eyeLheightCurrent/2;} else{eyelidsHappyBottomOffsetNext = 0;}
++
++  // Draw tired top eyelids 
++    eyelidsTiredHeight = (eyelidsTiredHeight + eyelidsTiredHeightNext)/2;
++    if (!cyclops){
++      display->fillTriangle(eyeLx, eyeLy-1, eyeLx+eyeLwidthCurrent, eyeLy-1, eyeLx, eyeLy+eyelidsTiredHeight-1, BGCOLOR); // left eye 
++      display->fillTriangle(eyeRx, eyeRy-1, eyeRx+eyeRwidthCurrent, eyeRy-1, eyeRx+eyeRwidthCurrent, eyeRy+eyelidsTiredHeight-1, BGCOLOR); // right eye
++    } else {
++      // Cyclops tired eyelids
++      display->fillTriangle(eyeLx, eyeLy-1, eyeLx+(eyeLwidthCurrent/2), eyeLy-1, eyeLx, eyeLy+eyelidsTiredHeight-1, BGCOLOR); // left eyelid half
++      display->fillTriangle(eyeLx+(eyeLwidthCurrent/2), eyeLy-1, eyeLx+eyeLwidthCurrent, eyeLy-1, eyeLx+eyeLwidthCurrent, eyeLy+eyelidsTiredHeight-1, BGCOLOR); // right eyelid half
++    }
++
++  // Draw angry top eyelids 
++    eyelidsAngryHeight = (eyelidsAngryHeight + eyelidsAngryHeightNext)/2;
++    if (!cyclops){ 
++      display->fillTriangle(eyeLx, eyeLy-1, eyeLx+eyeLwidthCurrent, eyeLy-1, eyeLx+eyeLwidthCurrent, eyeLy+eyelidsAngryHeight-1, BGCOLOR); // left eye
++      display->fillTriangle(eyeRx, eyeRy-1, eyeRx+eyeRwidthCurrent, eyeRy-1, eyeRx, eyeRy+eyelidsAngryHeight-1, BGCOLOR); // right eye
++    } else {
++      // Cyclops angry eyelids
++      display->fillTriangle(eyeLx, eyeLy-1, eyeLx+(eyeLwidthCurrent/2), eyeLy-1, eyeLx+(eyeLwidthCurrent/2), eyeLy+eyelidsAngryHeight-1, BGCOLOR); // left eyelid half
++      display->fillTriangle(eyeLx+(eyeLwidthCurrent/2), eyeLy-1, eyeLx+eyeLwidthCurrent, eyeLy-1, eyeLx+(eyeLwidthCurrent/2), eyeLy+eyelidsAngryHeight-1, BGCOLOR); // right eyelid half
++    }
++
++  // Draw happy bottom eyelids
++    eyelidsHappyBottomOffset = (eyelidsHappyBottomOffset + eyelidsHappyBottomOffsetNext)/2;
++    display->fillRoundRect(eyeLx-1, (eyeLy+eyeLheightCurrent)-eyelidsHappyBottomOffset+1, eyeLwidthCurrent+2, eyeLheightDefault, eyeLborderRadiusCurrent, BGCOLOR); // left eye
++    if (!cyclops){ 
++      display->fillRoundRect(eyeRx-1, (eyeRy+eyeRheightCurrent)-eyelidsHappyBottomOffset+1, eyeRwidthCurrent+2, eyeRheightDefault, eyeRborderRadiusCurrent, BGCOLOR); // right eye
++    }
++
++  // Add sweat drops
++    if (sweat){
++      // Sweat drop 1 -> left corner
++      if(sweat1YPos <= sweat1YPosMax){sweat1YPos+=0.5;} // vertical movement from initial to max
++      else {sweat1XPosInitial = random(30); sweat1YPos = 2; sweat1YPosMax = (random(10)+10); sweat1Width = 1; sweat1Height = 2;} // if max vertical position is reached: reset all values for next drop
++      if(sweat1YPos <= sweat1YPosMax/2){sweat1Width+=0.5; sweat1Height+=0.5;} // shape grows in first half of animation ...
++      else {sweat1Width-=0.1; sweat1Height-=0.5;} // ... and shrinks in second half of animation
++      sweat1XPos = sweat1XPosInitial-(sweat1Width/2); // keep the growing shape centered to initial x position
++      display->fillRoundRect(sweat1XPos, sweat1YPos*sweatScale, sweat1Width*sweatScale, sweat1Height*sweatScale, sweatBorderradius*sweatScale, MAINCOLOR); // draw sweat drop (port: scaled)
++
++
++      // Sweat drop 2 -> center area
++      if(sweat2YPos <= sweat2YPosMax){sweat2YPos+=0.5;} // vertical movement from initial to max
++      else {sweat2XPosInitial = random((screenWidth-60))+30; sweat2YPos = 2; sweat2YPosMax = (random(10)+10); sweat2Width = 1; sweat2Height = 2;} // if max vertical position is reached: reset all values for next drop
++      if(sweat2YPos <= sweat2YPosMax/2){sweat2Width+=0.5; sweat2Height+=0.5;} // shape grows in first half of animation ...
++      else {sweat2Width-=0.1; sweat2Height-=0.5;} // ... and shrinks in second half of animation
++      sweat2XPos = sweat2XPosInitial-(sweat2Width/2); // keep the growing shape centered to initial x position
++      display->fillRoundRect(sweat2XPos, sweat2YPos*sweatScale, sweat2Width*sweatScale, sweat2Height*sweatScale, sweatBorderradius*sweatScale, MAINCOLOR); // draw sweat drop (port: scaled)
++
++
++      // Sweat drop 3 -> right corner
++      if(sweat3YPos <= sweat3YPosMax){sweat3YPos+=0.5;} // vertical movement from initial to max
++      else {sweat3XPosInitial = (screenWidth-30)+(random(30)); sweat3YPos = 2; sweat3YPosMax = (random(10)+10); sweat3Width = 1; sweat3Height = 2;} // if max vertical position is reached: reset all values for next drop
++      if(sweat3YPos <= sweat3YPosMax/2){sweat3Width+=0.5; sweat3Height+=0.5;} // shape grows in first half of animation ...
++      else {sweat3Width-=0.1; sweat3Height-=0.5;} // ... and shrinks in second half of animation
++      sweat3XPos = sweat3XPosInitial-(sweat3Width/2); // keep the growing shape centered to initial x position
++      display->fillRoundRect(sweat3XPos, sweat3YPos*sweatScale, sweat3Width*sweatScale, sweat3Height*sweatScale, sweatBorderradius*sweatScale, MAINCOLOR); // draw sweat drop (port: scaled)
++    }
++
++  display->display(); // show drawings on display
++
++} // end of drawEyes method
++
++
++}; // end of class roboEyes
++
++} // namespace roboeyes
++
++
++#endif
+diff --git a/main/boards/esp32s3-weact-dog/tools/gen_font_8x16.py b/main/boards/esp32s3-weact-dog/tools/gen_font_8x16.py
+new file mode 100644
+index 0000000..3229e8b
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/tools/gen_font_8x16.py
+@@ -0,0 +1,49 @@
++#!/usr/bin/env python3
++"""Generate font_8x16.h (ASCII + Vietnamese) from DejaVu Sans Mono.
++
++DejaVu fonts are derived from Bitstream Vera (permissive license); the rendered
++bitmaps are embedded only as a tiny subtitle font.
++Usage: python3 gen_font_8x16.py [path/to/DejaVuSansMono.ttf] > ../font_8x16.h
++"""
++import sys
++import unicodedata
++from PIL import Image, ImageDraw, ImageFont
++
++TTF = sys.argv[1] if len(sys.argv) > 1 else "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
++W, H, SIZE, BASELINE = 8, 16, 12, 12
++
++chars = set(chr(c) for c in range(0x20, 0x7F))
++vowels = "aăâeêioôơuưyAĂÂEÊIOÔƠUƯY"
++tones = ["", "̀", "́", "̃", "̉", "̣"]
++for v in vowels:
++    for t in tones:
++        chars.add(unicodedata.normalize("NFC", v + t))
++chars |= set("đĐ")
++chars = sorted(c for c in chars if len(c) == 1)
++
++font = ImageFont.truetype(TTF, SIZE)
++out = []
++for ch in chars:
++    img = Image.new("L", (W, H), 0)
++    d = ImageDraw.Draw(img)
++    d.text((0, BASELINE), ch, font=font, fill=255, anchor="ls")
++    rows = []
++    for y in range(H):
++        b = 0
++        for x in range(W):
++            if img.getpixel((x, y)) >= 110:
++                b |= 0x80 >> x
++        rows.append(b)
++    out.append((ord(ch), rows, ch))
++
++print("// Generated by tools/gen_font_8x16.py - do not edit.")
++print("// 8x16 bitmap glyphs (MSB = left pixel), ASCII + Vietnamese, from DejaVu Sans Mono.")
++print("#pragma once\n#include <cstdint>\n")
++print("static const uint32_t kFont8x16Codepoints[%d] = {" % len(out))
++print("    " + ", ".join("0x%04X" % cp for cp, _, _ in out))
++print("};\n")
++print("static const uint8_t kFont8x16Bitmaps[%d][16] = {" % len(out))
++for cp, rows, ch in out:
++    label = ch if ch not in "\\" else "backslash"
++    print("    {%s},  // U+%04X %s" % (", ".join("0x%02X" % r for r in rows), cp, label))
++print("};")
+diff --git a/main/boards/esp32s3-weact-dog/weact_dog_board.cc b/main/boards/esp32s3-weact-dog/weact_dog_board.cc
+new file mode 100644
+index 0000000..e58547c
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/weact_dog_board.cc
+@@ -0,0 +1,159 @@
++// XIAOZHI dog robot on a WeAct ESP32-S3 CoreBoard N16R8:
++// ILI9341 eyes, INMP441 mic, I2S amp, 4 servo legs.
++#include <driver/gpio.h>
++#include <driver/spi_common.h>
++#include <esp_lcd_ili9341.h>
++#include <esp_lcd_panel_io.h>
++#include <esp_lcd_panel_ops.h>
++#include <esp_lcd_panel_vendor.h>
++#include <esp_log.h>
++#include <esp_system.h>
++
++#include "application.h"
++#include "button.h"
++#include "codecs/no_audio_codec.h"
++#include "config.h"
++#include "dog_behavior.h"
++#include "dog_config.h"
++#include "eyes_display.h"
++#include "led/single_led.h"
++#include "leg_servos.h"
++#include "wifi_board.h"
++
++#define TAG "WeactDogBoard"
++
++// NoAudioCodecSimplex + amp SD (mute) pin + conservative default volume.
++class DogAudioCodec : public NoAudioCodecSimplex {
++public:
++    DogAudioCodec()
++        : NoAudioCodecSimplex(AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE, PIN_AMP_BCLK,
++                              PIN_AMP_LRC, PIN_AMP_DIN,
++                              AUDIO_SPK_STEREO_DUP ? I2S_STD_SLOT_BOTH : I2S_STD_SLOT_LEFT,
++                              PIN_MIC_SCK, PIN_MIC_WS, PIN_MIC_SD, I2S_STD_SLOT_LEFT) {
++        output_volume_ = AUDIO_DEFAULT_OUTPUT_VOLUME;  // NVS value wins if the user changed it
++        if (PIN_AMP_SD != GPIO_NUM_NC) {
++            gpio_config_t io = {};
++            io.pin_bit_mask = 1ULL << PIN_AMP_SD;
++            io.mode = GPIO_MODE_OUTPUT;
++            gpio_config(&io);
++            gpio_set_level(PIN_AMP_SD, 0);  // muted until output is enabled
++        }
++    }
++
++protected:
++    void EnableOutput(bool enable) override {
++        if (PIN_AMP_SD != GPIO_NUM_NC && !enable) gpio_set_level(PIN_AMP_SD, 0);
++        NoAudioCodecSimplex::EnableOutput(enable);
++        if (PIN_AMP_SD != GPIO_NUM_NC && enable) gpio_set_level(PIN_AMP_SD, 1);
++    }
++};
++
++class WeactDogBoard : public WifiBoard {
++private:
++    Button boot_button_;
++    EyesDisplay* display_ = nullptr;
++    LegServos legs_;
++    DogBehavior* behavior_ = nullptr;
++
++    static void LogResetReason() {
++        const char* name = "unknown";
++        switch (esp_reset_reason()) {
++            case ESP_RST_POWERON: name = "power-on"; break;
++            case ESP_RST_SW: name = "software"; break;
++            case ESP_RST_PANIC: name = "panic"; break;
++            case ESP_RST_INT_WDT: name = "interrupt watchdog"; break;
++            case ESP_RST_TASK_WDT: name = "task watchdog"; break;
++            case ESP_RST_WDT: name = "other watchdog"; break;
++            case ESP_RST_DEEPSLEEP: name = "deep sleep"; break;
++            case ESP_RST_BROWNOUT: name = "BROWNOUT (check battery/boost/servo current)"; break;
++            case ESP_RST_USB: name = "usb"; break;
++            case ESP_RST_EXT: name = "external pin"; break;
++            default: break;
++        }
++        if (esp_reset_reason() == ESP_RST_BROWNOUT) {
++            ESP_LOGE(TAG, "Reset reason: %s", name);
++        } else {
++            ESP_LOGI(TAG, "Reset reason: %s", name);
++        }
++    }
++
++    void InitializeSpi() {
++        spi_bus_config_t buscfg = {};
++        buscfg.mosi_io_num = PIN_TFT_MOSI;
++        buscfg.miso_io_num = PIN_TFT_MISO;
++        buscfg.sclk_io_num = PIN_TFT_SCLK;
++        buscfg.quadwp_io_num = GPIO_NUM_NC;
++        buscfg.quadhd_io_num = GPIO_NUM_NC;
++        buscfg.max_transfer_sz = DISPLAY_WIDTH * EYES_PUSH_LINES * sizeof(uint16_t) + 64;
++        ESP_ERROR_CHECK(spi_bus_initialize(DISPLAY_SPI_HOST, &buscfg, SPI_DMA_CH_AUTO));
++    }
++
++    void InitializeDisplay() {
++        esp_lcd_panel_io_handle_t panel_io = nullptr;
++        esp_lcd_panel_handle_t panel = nullptr;
++
++        esp_lcd_panel_io_spi_config_t io_config = {};
++        io_config.cs_gpio_num = PIN_TFT_CS;
++        io_config.dc_gpio_num = PIN_TFT_DC;
++        io_config.spi_mode = DISPLAY_SPI_MODE;
++        io_config.pclk_hz = DISPLAY_SPI_HZ;
++        io_config.trans_queue_depth = 4;
++        io_config.lcd_cmd_bits = 8;
++        io_config.lcd_param_bits = 8;
++        ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(DISPLAY_SPI_HOST, &io_config, &panel_io));
++
++        esp_lcd_panel_dev_config_t panel_config = {};
++        panel_config.reset_gpio_num = PIN_TFT_RST;
++        panel_config.rgb_ele_order = DISPLAY_RGB_ORDER;
++        panel_config.bits_per_pixel = 16;
++        ESP_ERROR_CHECK(esp_lcd_new_panel_ili9341(panel_io, &panel_config, &panel));
++
++        esp_lcd_panel_reset(panel);
++        esp_lcd_panel_init(panel);
++        esp_lcd_panel_invert_color(panel, DISPLAY_INVERT_COLOR);
++        esp_lcd_panel_swap_xy(panel, DISPLAY_SWAP_XY);
++        esp_lcd_panel_mirror(panel, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y);
++
++        display_ = new EyesDisplay(panel_io, panel, DISPLAY_WIDTH, DISPLAY_HEIGHT);
++    }
++
++    void InitializeButtons() {
++        // Push-to-talk: a click toggles listening (upstream behaviour).
++        boot_button_.OnClick([this]() {
++            auto& app = Application::GetInstance();
++            if (app.GetDeviceState() == kDeviceStateStarting) {
++                EnterWifiConfigMode();
++                return;
++            }
++            app.ToggleChatState();
++        });
++    }
++
++public:
++    WeactDogBoard() : boot_button_(BOOT_BUTTON_GPIO) {
++        LogResetReason();
++        InitializeSpi();
++        InitializeDisplay();
++        InitializeButtons();
++#ifdef CONFIG_DOG_EYES_DEBUG_CYCLE
++        display_->StartDebugCycle(2500);  // M2 bench test: cycle moods
++#endif
++        legs_.Begin();  // task only; servos attach after Wi-Fi + audio are up
++        behavior_ = new DogBehavior(display_, &legs_);
++        behavior_->Start();
++    }
++
++    Led* GetLed() override {
++        static SingleLed led(BUILTIN_LED_GPIO);
++        return &led;
++    }
++
++    AudioCodec* GetAudioCodec() override {
++        static DogAudioCodec audio_codec;
++        return &audio_codec;
++    }
++
++    Display* GetDisplay() override { return display_; }
++};
++
++DECLARE_BOARD(WeactDogBoard);
+-- 
+2.44.0.windows.1
+

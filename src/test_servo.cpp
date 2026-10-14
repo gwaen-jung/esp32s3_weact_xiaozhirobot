@@ -42,6 +42,10 @@
 #define TFT_MISO -1
 #endif
 
+#ifndef TFT_SPI_HZ
+#define TFT_SPI_HZ 27000000
+#endif
+
 static SPIClass tftSPI(FSPI);
 static Adafruit_ILI9341 tft(&tftSPI, TFT_DC, TFT_CS, TFT_RST);
 
@@ -98,6 +102,7 @@ enum OperationalMode {
 static OperationalMode currentMode = MODE_AUTO_DEMO;
 static bool globalAttached = true;
 static String currentPoseName = "STAND (Dung thang)";
+static String lastHudPose = "";
 static uint16_t currentEyeColor = ILI9341_CYAN;
 
 // ----------------------------------------------------------------------------
@@ -158,6 +163,30 @@ void drawEye(int cx, int cy, int w, int h, uint16_t color, int pupOffsetX = 0, i
   tft.fillCircle(cx + pupOffsetX - pw/4, cy + pupOffsetY - ph/4, 4, ILI9341_WHITE);
 }
 
+// Vẽ lại riêng vùng mắt (không xóa cả màn hình -> không nháy)
+void drawEyes(uint16_t eyeColor, int eyeH, int pupX, int pupY) {
+  tft.fillRect(40, 30, 240, 92, ILI9341_BLACK);
+  drawEye(105, 80, 65, eyeH, eyeColor, pupX, pupY);
+  drawEye(215, 80, 65, eyeH, eyeColor, pupX, pupY);
+}
+
+// Vẽ lại riêng dòng thông số góc
+void drawAngles() {
+  const int xs[LEG_COUNT] = {12, 90, 168, 246};
+  tft.fillRect(0, 154, 320, 14, ILI9341_BLACK);
+  tft.setTextSize(1);
+  for (int i = 0; i < LEG_COUNT; i++) {
+    tft.setCursor(xs[i], 158);
+    if (legs[i].isServo360) {
+      tft.setTextColor(ILI9341_ORANGE);
+      tft.printf("%s(360):%d", legs[i].code, legs[i].currentAngle);
+    } else {
+      tft.setTextColor(ILI9341_GREEN);
+      tft.printf("%s(G%d):%d", legs[i].code, legs[i].pin, legs[i].currentAngle);
+    }
+  }
+}
+
 void drawHUD(const char* poseName, uint16_t eyeColor, int eyeH = 60, int pupX = 0, int pupY = 0) {
   tft.fillScreen(ILI9341_BLACK);
 
@@ -166,42 +195,23 @@ void drawHUD(const char* poseName, uint16_t eyeColor, int eyeH = 60, int pupX = 
   tft.setTextColor(ILI9341_WHITE);
   tft.setTextSize(1);
   tft.setCursor(8, 7);
-  tft.printf("XIAOZHI ROBOT DOG - 4-LEG FINAL VALIDATION [%s]",
-             (currentMode == MODE_AUTO_DEMO) ? "AUTO DEMO" : "MANUAL");
+  tft.printf("XIAOZHI DOG - 4-LEG SERVO TEST [%s]",
+             (currentMode == MODE_AUTO_DEMO) ? "AUTO" : "MANUAL");
 
   // 2. Hai mắt RoboEyes sinh động
-  drawEye(105, 80, 65, eyeH, eyeColor, pupX, pupY);
-  drawEye(215, 80, 65, eyeH, eyeColor, pupX, pupY);
+  drawEyes(eyeColor, eyeH, pupX, pupY);
 
   // 3. Tên tư thế
   tft.setTextColor(ILI9341_YELLOW);
   tft.setTextSize(2);
-  int nameX = 160 - (strlen(poseName) * 6);
-  if (nameX < 10) nameX = 10;
+  int nameX = 160 - (int)(strlen(poseName) * 6);
+  if (nameX < 4) nameX = 4;
   tft.setCursor(nameX, 126);
   tft.print(poseName);
 
   // 4. Bảng thông số góc 4 Chân
   tft.drawFastHLine(10, 150, 300, 0x4208);
-  tft.setTextSize(1);
-  tft.setTextColor(ILI9341_GREEN);
-  tft.setCursor(15, 158);
-  tft.printf("FL(G7): %d*", legs[LEG_FL].currentAngle);
-
-  tft.setCursor(95, 158);
-  if (legs[LEG_FR].isServo360) {
-    tft.setTextColor(ILI9341_ORANGE);
-    tft.printf("FR(360): %d*", legs[LEG_FR].currentAngle);
-  } else {
-    tft.printf("FR(G4): %d*", legs[LEG_FR].currentAngle);
-  }
-
-  tft.setCursor(175, 158);
-  tft.setTextColor(ILI9341_GREEN);
-  tft.printf("RL(G6): %d*", legs[LEG_RL].currentAngle);
-
-  tft.setCursor(255, 158);
-  tft.printf("RR(G5): %d*", legs[LEG_RR].currentAngle);
+  drawAngles();
 
   // 5. Khung lệnh nhanh
   tft.drawRoundRect(10, 174, 300, 42, 4, 0x2124);
@@ -209,19 +219,21 @@ void drawHUD(const char* poseName, uint16_t eyeColor, int eyeH = 60, int pupX = 
   tft.setTextColor(0x7BEF);
   tft.setTextSize(1);
   tft.setCursor(16, 180);
-  tft.print("LENH: stand | sit | wave | crouch | wiggle | demo");
+  tft.print("LENH: stand|sit|wave|crouch|wiggle|demo");
   tft.setCursor(16, 192);
-  tft.print("NGUON: 'relax' (Tat PWM) | 'attach' (Bat PWM) | 'all 90'");
+  tft.print("relax | attach | all <do> | fl <do> | trim4 <n>");
   tft.setCursor(16, 204);
-  tft.print("NUT BOOT: Nhan nhanh = Doi tu the | Nhan giu = Relax");
+  tft.print("BOOT: nhan nhanh = doi tu the | giu = relax");
 
   // 6. Thanh đáy
   tft.fillRect(0, 220, 320, 20, 0x10A2);
   tft.setTextColor(ILI9341_CYAN);
   tft.setTextSize(1);
   tft.setCursor(8, 226);
-  tft.printf("Trang thai PWM: %s | FR(GPIO 4): 360 Controlled",
-             globalAttached ? "ATTACHED (ON)" : "RELAXED (OFF)");
+  tft.printf("PWM: %s | FR(G%d): %s", globalAttached ? "ON" : "OFF (relax)",
+             legs[LEG_FR].pin, legs[LEG_FR].isServo360 ? "360, dung o trim4" : "180");
+
+  lastHudPose = poseName;
 }
 
 // ----------------------------------------------------------------------------
@@ -240,7 +252,7 @@ void setPoseSmooth(const char* poseName, int targetFL, int targetFR, int targetR
   }
 
   // Chân 360 (FR - Trên Phải - GPIO 4) giữ quanh deadband để không quay tròn
-  int safeFR = legs[LEG_FR].isServo360 ? deadband360 : targetFR;
+  int safeFR = legs[LEG_FR].isServo360 ? deadband360 : constrain(targetFR, MIN_ANGLE, MAX_ANGLE);
 
   int targets[LEG_COUNT] = {
     constrain(targetFL, MIN_ANGLE, MAX_ANGLE),
@@ -269,7 +281,13 @@ void setPoseSmooth(const char* poseName, int targetFL, int targetFR, int targetR
     applyServoDuty(i, targets[i]);
   }
 
-  drawHUD(poseName, eyeCol, eyeH, pupX, pupY);
+  // Cùng tư thế (WAVE/WIGGLE lặp) -> chỉ vẽ lại mắt + góc, tránh fillScreen gây nháy/giật
+  if (lastHudPose == poseName) {
+    drawEyes(eyeCol, eyeH, pupX, pupY);
+    drawAngles();
+  } else {
+    drawHUD(poseName, eyeCol, eyeH, pupX, pupY);
+  }
   Serial.printf("[POSE] >>> %s (FL:%d FR:%d RL:%d RR:%d)\n",
                 poseName, legs[0].currentAngle, legs[1].currentAngle,
                 legs[2].currentAngle, legs[3].currentAngle);
@@ -375,17 +393,8 @@ void handleSerialCommand(String cmd) {
     return;
   }
 
-  if (cmd.startsWith("all")) {
-    int spaceIdx = cmd.indexOf(' ');
-    if (spaceIdx > 0) {
-      int deg = cmd.substring(spaceIdx + 1).toInt();
-      currentMode = MODE_MANUAL;
-      setPoseSmooth("ALL SERVO DEG", deg, deadband360, deg, deg, 400);
-      return;
-    }
-  }
-
-  if (cmd == "fr 180" || cmd == "all 180") {
+  // Đổi loại servo FR: xử lý TRƯỚC lệnh "all"/"fr <do>" để không bị nhánh khác bắt mất
+  if (cmd == "fr 180") {
     legs[LEG_FR].isServo360 = false;
     Serial.println("[CONFIG] >>> Da chuyen FR (GPIO 4) thanh SERVO 180 TIEU CHUAN!");
     drawHUD("FR -> SERVO 180", ILI9341_GREEN, 60);
@@ -395,7 +404,17 @@ void handleSerialCommand(String cmd) {
   if (cmd == "fr 360") {
     legs[LEG_FR].isServo360 = true;
     Serial.println("[CONFIG] >>> Da chuyen FR (GPIO 4) thanh SERVO 360 (quay lien tuc)!");
+    legs[LEG_FR].currentAngle = deadband360;
+    applyServoDuty(LEG_FR, deadband360);
     drawHUD("FR -> SERVO 360", ILI9341_ORANGE, 60);
+    return;
+  }
+
+  if (cmd.startsWith("all ")) {
+    int deg = cmd.substring(4).toInt();
+    currentMode = MODE_MANUAL;
+    // FR được setPoseSmooth tự giữ deadband nếu là servo 360
+    setPoseSmooth("ALL SERVO DEG", deg, deg, deg, deg, 400);
     return;
   }
 
@@ -416,22 +435,28 @@ void handleSerialCommand(String cmd) {
   for (int i = 0; i < LEG_COUNT; i++) {
     String codeStr = legs[i].code;
     codeStr.toLowerCase();
+    codeStr += ' ';
     if (cmd.startsWith(codeStr)) {
-      int spaceIdx = cmd.indexOf(' ');
-      if (spaceIdx > 0) {
-        int val = cmd.substring(spaceIdx + 1).toInt();
-        currentMode = MODE_MANUAL;
-        if (!globalAttached) attachAllServos();
-        legs[i].currentAngle = val;
-        applyServoDuty(i, val);
-        Serial.printf("[SERVO] Chan %s -> %d do\n", legs[i].code, val);
-        drawHUD("CHINH GOC LE", ILI9341_YELLOW, 60);
+      if (legs[i].isServo360) {
+        Serial.printf("[WARN] %s dang la servo 360 (goc = toc do). Dung 'trim4 <80-100>' "
+                      "de chinh diem dung, hoac 'fr 180' neu da thay servo 180.\n", legs[i].code);
         return;
       }
+      int val = cmd.substring(codeStr.length()).toInt();
+      int safeVal = constrain(val, MIN_ANGLE, MAX_ANGLE);
+      currentMode = MODE_MANUAL;
+      if (!globalAttached) attachAllServos();
+      legs[i].currentAngle = safeVal;
+      applyServoDuty(i, safeVal);
+      Serial.printf("[SERVO] Chan %s -> %d do%s\n", legs[i].code, safeVal,
+                    (safeVal != val) ? " (da gioi han 40-140)" : "");
+      drawHUD("CHINH GOC LE", ILI9341_YELLOW, 60);
+      return;
     }
   }
 
-  Serial.println("[WARN] Go 'stand', 'sit', 'wave', 'crouch', 'wiggle', 'demo', 'relax'");
+  Serial.println("[WARN] Lenh: stand | sit | wave | crouch | wiggle | demo | relax | attach |"
+                 " all <do> | fl/rl/rr <do> | fr 180 | fr 360 | trim4 <80-100>");
 }
 
 // ----------------------------------------------------------------------------
@@ -489,8 +514,9 @@ void setup() {
 
   // Khởi tạo màn hình ILI9341
   tftSPI.begin(TFT_SCLK, TFT_MISO, TFT_MOSI, TFT_CS);
-  tft.begin(27000000);
+  tft.begin(TFT_SPI_HZ);
   tft.setRotation(1);
+  tft.setTextWrap(false);
 
   // Khởi tạo 4 chân servo
   attachAllServos();
@@ -512,7 +538,6 @@ void loop() {
   // 1. Nếu ở chế độ AUTO DEMO: Tự động tuần hoàn các tư thế mỗi 3.5 giây
   if (currentMode == MODE_AUTO_DEMO && globalAttached) {
     if (now - lastAutoStepTime >= 3500) {
-      lastAutoStepTime = now;
       autoStep = (autoStep + 1) % 5;
 
       switch (autoStep) {
@@ -522,6 +547,7 @@ void loop() {
         case 3: poseCrouch(); break;
         case 4: poseWiggle(); break;
       }
+      lastAutoStepTime = millis();  // nghỉ đủ 3.5s SAU khi diễn xong
     }
   }
 
@@ -533,7 +559,7 @@ void loop() {
         handleSerialCommand(serialInputBuffer);
         serialInputBuffer = "";
       }
-    } else {
+    } else if (serialInputBuffer.length() < 64) {
       serialInputBuffer += c;
     }
   }
