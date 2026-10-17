@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1560" viewBox="0 0 1800 1560">
 <rect x="0" y="0" width="1800" height="1560" rx="0" fill="#f8fafc" stroke="none" stroke-width="1.5" />
 <text x="40" y="52" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="28" fill="#0f172a" font-weight="bold" text-anchor="start">XIAOZHI ROBOT “NHI” — SƠ ĐỒ ĐI DÂY &amp; PINOUT</text>
-<text x="40" y="80" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="14" fill="#64748b" font-weight="normal" text-anchor="start">WeAct ESP32-S3 N16R8 · ILI9341 2.4" · INMP441 + PCM5100A · VL53L0X · MPU6050 · Xiaozhi ESP-IDF (esp32s3-weact-dog)</text>
+<text x="40" y="80" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="14" fill="#64748b" font-weight="normal" text-anchor="start">WeAct ESP32-S3 N16R8 · ILI9341 2.4" · INMP441 + PCM5100A · VL53L0X · MPU6050 · 4× Servo · Xiaozhi ESP-IDF (esp32s3-weact-dog)</text>
 <text x="40" y="102" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="13" fill="#b45309" font-weight="normal" text-anchor="start">Sơ đồ logic: chân được nhóm theo chức năng, KHÔNG theo thứ tự vật lý trên header — dò số GPIO in trên board khi cắm dây.</text>
 <rect x="640" y="118" width="420" height="762" rx="18" fill="#1e293b" stroke="none" stroke-width="1.5" />
 <rect x="750" y="128" width="200" height="52" rx="6" fill="#334155" stroke="none" stroke-width="1.5" />
@@ -37,12 +37,16 @@
 <text x="658" y="510.5" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#ffffff" font-weight="bold" text-anchor="start">GPIO2</text>
 <rect x="632" y="532" width="16" height="16" rx="3" fill="#e2b04a" stroke="none" stroke-width="1.5" />
 <text x="658" y="544.5" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#ffffff" font-weight="bold" text-anchor="start">GPIO4</text>
+<text x="732" y="544.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#cbd5e1" font-weight="normal" text-anchor="start">SERVO FR</text>
 <rect x="632" y="566" width="16" height="16" rx="3" fill="#e2b04a" stroke="none" stroke-width="1.5" />
 <text x="658" y="578.5" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#ffffff" font-weight="bold" text-anchor="start">GPIO5</text>
+<text x="732" y="578.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#cbd5e1" font-weight="normal" text-anchor="start">SERVO RR</text>
 <rect x="632" y="600" width="16" height="16" rx="3" fill="#e2b04a" stroke="none" stroke-width="1.5" />
 <text x="658" y="612.5" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#ffffff" font-weight="bold" text-anchor="start">GPIO6</text>
+<text x="732" y="612.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#cbd5e1" font-weight="normal" text-anchor="start">SERVO RL</text>
 <rect x="632" y="634" width="16" height="16" rx="3" fill="#e2b04a" stroke="none" stroke-width="1.5" />
 <text x="658" y="646.5" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#ffffff" font-weight="bold" text-anchor="start">GPIO7</text>
+<text x="732" y="646.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#cbd5e1" font-weight="normal" text-anchor="start">SERVO FL</text>
 <rect x="632" y="668" width="16" height="16" rx="3" fill="#e2b04a" stroke="none" stroke-width="1.5" />
 <text x="658" y="680.5" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#ffffff" font-weight="bold" text-anchor="start">GPIO10</text>
 <rect x="632" y="702" width="16" height="16" rx="3" fill="#e2b04a" stroke="none" stroke-width="1.5" />
@@ -157,25 +161,13 @@
 <text x="164" y="266" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">landscape 320×240</text>
 <path d="M632,438 H600" fill="none" stroke="#0891b2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4"/>
 <rect x="466" y="427" width="128" height="22" rx="11" fill="#0891b2" stroke="none" stroke-width="1.5" />
-<text x="530.0" y="442.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">Đèn nền PWM</text>
+<text x="530.0" y="442.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">Đèn nền / PIR</text>
 <path d="M632,472 H600" fill="none" stroke="#0891b2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4"/>
 <rect x="466" y="461" width="128" height="22" rx="11" fill="#0891b2" stroke="none" stroke-width="1.5" />
-<text x="530.0" y="476.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">Nút Wake</text>
+<text x="530.0" y="476.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">Touch / Wake</text>
 <path d="M632,506 H600" fill="none" stroke="#0891b2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4"/>
 <rect x="466" y="495" width="128" height="22" rx="11" fill="#0891b2" stroke="none" stroke-width="1.5" />
 <text x="530.0" y="510.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">Đo pin ADC</text>
-<path d="M632,540 H600" fill="none" stroke="#0891b2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4"/>
-<rect x="466" y="529" width="128" height="22" rx="11" fill="#0891b2" stroke="none" stroke-width="1.5" />
-<text x="530.0" y="544.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">Touch đầu</text>
-<path d="M632,574 H600" fill="none" stroke="#0891b2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4"/>
-<rect x="466" y="563" width="128" height="22" rx="11" fill="#0891b2" stroke="none" stroke-width="1.5" />
-<text x="530.0" y="578.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">Touch lưng</text>
-<path d="M632,608 H600" fill="none" stroke="#0891b2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4"/>
-<rect x="466" y="597" width="128" height="22" rx="11" fill="#0891b2" stroke="none" stroke-width="1.5" />
-<text x="530.0" y="612.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">Cảm biến PIR</text>
-<path d="M632,642 H600" fill="none" stroke="#0891b2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4"/>
-<rect x="466" y="631" width="128" height="22" rx="11" fill="#0891b2" stroke="none" stroke-width="1.5" />
-<text x="530.0" y="646.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">Servo/Buzzer</text>
 <path d="M632,676 H600" fill="none" stroke="#0891b2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4"/>
 <rect x="466" y="665" width="128" height="22" rx="11" fill="#0891b2" stroke="none" stroke-width="1.5" />
 <text x="530.0" y="680.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">microSD CS</text>
@@ -300,11 +292,38 @@
 <text x="1473.0" y="816.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">GND</text>
 <text x="1574" y="612" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">pull-up nội</text>
 <text x="1574" y="628" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">100 kHz</text>
-<text x="150" y="536" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#64748b" font-weight="bold" text-anchor="start">GPIO4/5/6/7: chân servo cũ</text>
-<text x="150" y="552" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">(FR/RR/RL/FL) — firmware giữ LOW,</text>
-<text x="150" y="567" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">có thể tháo servo &amp; dùng lại</text>
-<text x="150" y="672" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#64748b" font-weight="bold" text-anchor="start">GPIO10–13: SPI phụ (SPI3)</text>
-<text x="150" y="688" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">→ thẻ microSD nghe nhạc offline</text>
+<rect x="150" y="482" width="270" height="186" rx="12" fill="#ffffff" stroke="#db2777" stroke-width="2.5" />
+<rect x="150" y="482" width="270" height="30" rx="12" fill="#db2777" stroke="none" stroke-width="1.5" />
+<rect x="150" y="500" width="270" height="12" rx="0" fill="#db2777" stroke="none" stroke-width="1.5" />
+<text x="162" y="503" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="14" fill="#ffffff" font-weight="bold" text-anchor="start">4× SERVO SG90/MG90S</text>
+<text x="410" y="503" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#ffffff" font-weight="normal" text-anchor="end">PWM 50 Hz</text>
+<rect x="414" y="534" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
+<text x="408" y="544.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="end">SIG FR</text>
+<text x="164" y="544.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start">FR · trước phải</text>
+<path d="M426,540 H632" fill="none" stroke="#db2777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="426" cy="540" r="4" fill="#db2777"/>
+<circle cx="632" cy="540" r="4" fill="#db2777"/>
+<rect x="414" y="568" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
+<text x="408" y="578.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="end">SIG RR</text>
+<text x="164" y="578.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start">RR · sau phải</text>
+<path d="M426,574 H632" fill="none" stroke="#db2777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="426" cy="574" r="4" fill="#db2777"/>
+<circle cx="632" cy="574" r="4" fill="#db2777"/>
+<rect x="414" y="602" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
+<text x="408" y="612.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="end">SIG RL</text>
+<text x="164" y="612.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start">RL · sau trái</text>
+<path d="M426,608 H632" fill="none" stroke="#db2777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="426" cy="608" r="4" fill="#db2777"/>
+<circle cx="632" cy="608" r="4" fill="#db2777"/>
+<rect x="414" y="636" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
+<text x="408" y="646.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="end">SIG FL</text>
+<text x="164" y="646.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start">FL · trước trái</text>
+<path d="M426,642 H632" fill="none" stroke="#db2777" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="426" cy="642" r="4" fill="#db2777"/>
+<circle cx="632" cy="642" r="4" fill="#db2777"/>
+<text x="164" y="528" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#dc2626" font-weight="bold" text-anchor="start">V+ → 5V ngoài ≥3A · GND chung</text>
+<text x="150" y="714" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#64748b" font-weight="bold" text-anchor="start">GPIO10–13: SPI phụ (SPI3)</text>
+<text x="150" y="730" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">→ thẻ microSD nghe nhạc offline</text>
 <rect x="40" y="930" width="1720" height="150" rx="14" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" />
 <text x="60" y="960" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="15" fill="#dc2626" font-weight="bold" text-anchor="start">NGUỒN</text>
 <rect x="90" y="980" width="270" height="70" rx="10" fill="#fff7f7" stroke="#dc2626" stroke-width="2" />
@@ -323,9 +342,9 @@
 <path d="M390,1009 l8,6 l-8,6" fill="none" stroke="#dc2626" stroke-width="3"/>
 <path d="M670,1015 H706" fill="none" stroke="#dc2626" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M700,1009 l8,6 l-8,6" fill="none" stroke="#dc2626" stroke-width="3"/>
-<text x="1480" y="1008" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="13" fill="#b45309" font-weight="bold" text-anchor="start">Servo: ĐÃ TẮT</text>
-<text x="1480" y="1028" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start">nếu dùng lại → nguồn 5V riêng ≥3A</text>
-<text x="1480" y="1044" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#0f172a" font-weight="normal" text-anchor="start">+ tụ 470–1000µF, chung GND</text>
+<rect x="1470" y="980" width="250" height="70" rx="10" fill="#fdf2f8" stroke="#db2777" stroke-width="2" />
+<text x="1484" y="1008" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="14" fill="#db2777" font-weight="bold" text-anchor="start">5V ngoài ≥ 3A → 4 servo</text>
+<text x="1484" y="1032" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start">tụ 470–1000µF sát servo, nối GND chung</text>
 <rect x="40" y="1105" width="1720" height="420" rx="14" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" />
 <text x="60" y="1139" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="17" fill="#0891b2" font-weight="bold" text-anchor="start">NÂNG CẤP PHÙ HỢP VỚI XIAOZHI</text>
 <text x="400" y="1139" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#64748b" font-weight="normal" text-anchor="start">I2C dùng chung GPIO8/9 (không trùng địa chỉ: 0x23 · 0x29 · 0x36 · 0x38 · 0x39 · 0x68 · 0x76)</text>
@@ -339,10 +358,10 @@
 <text x="330" y="1213" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#0891b2" font-weight="bold" text-anchor="start">GPIO10–13</text>
 <text x="560" y="1213" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">CS10 · MOSI11 · SCK12 · MISO13</text>
 <text x="900" y="1213" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">Thư mục nhạc / âm thanh offline, MCP tool phát nhạc</text>
-<text x="60" y="1243" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">TTP223 / pad cảm ứng</text>
-<text x="330" y="1243" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#0891b2" font-weight="bold" text-anchor="start">GPIO4, GPIO5</text>
-<text x="560" y="1243" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">Touch nội ESP32-S3</text>
-<text x="900" y="1243" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">Xoa đầu → vui, chạm lưng → thức dậy / nghe</text>
+<text x="60" y="1243" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">TTP223 cảm ứng chạm</text>
+<text x="330" y="1243" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#0891b2" font-weight="bold" text-anchor="start">GPIO1</text>
+<text x="560" y="1243" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">Digital out = nút Wake</text>
+<text x="900" y="1243" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">Xoa đầu → vui, chạm → bắt đầu nghe</text>
 <rect x="50" y="1254" width="1700" height="30" rx="6" fill="#f1f5f9" stroke="none" stroke-width="1.5" />
 <text x="60" y="1273" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">MPU6050 (đã nối)</text>
 <text x="330" y="1273" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#0891b2" font-weight="bold" text-anchor="start">I2C 0x68</text>
@@ -363,8 +382,8 @@
 <text x="900" y="1363" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">Vẫy tay trái/phải → chuyển bài, tăng/giảm âm lượng</text>
 <rect x="50" y="1374" width="1700" height="30" rx="6" fill="#f1f5f9" stroke="none" stroke-width="1.5" />
 <text x="60" y="1393" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">PIR AM312</text>
-<text x="330" y="1393" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#0891b2" font-weight="bold" text-anchor="start">GPIO6</text>
-<text x="560" y="1393" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">Digital in</text>
+<text x="330" y="1393" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#0891b2" font-weight="bold" text-anchor="start">GPIO42</text>
+<text x="560" y="1393" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">Digital in (thay đèn nền PWM)</text>
 <text x="900" y="1393" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">Có người đến gần → Nhi chủ động chào</text>
 <text x="60" y="1423" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">MAX17048 + LiPo</text>
 <text x="330" y="1423" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#0891b2" font-weight="bold" text-anchor="start">I2C 0x36 / GPIO2</text>
@@ -375,10 +394,10 @@
 <text x="330" y="1453" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#0891b2" font-weight="bold" text-anchor="start">GPIO18</text>
 <text x="560" y="1453" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">Data (RMT)</text>
 <text x="900" y="1453" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">Đèn theo trạng thái: nghe / nghĩ / nói / cảm xúc</text>
-<text x="60" y="1483" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">Buzzer thụ động</text>
-<text x="330" y="1483" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#0891b2" font-weight="bold" text-anchor="start">GPIO7</text>
-<text x="560" y="1483" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">PWM (LEDC)</text>
-<text x="900" y="1483" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">Tiếng bíp phản hồi khi không phát loa</text>
+<text x="60" y="1483" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="13" fill="#0f172a" font-weight="bold" text-anchor="start">4 servo chân (đã nối)</text>
+<text x="330" y="1483" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#0891b2" font-weight="bold" text-anchor="start">GPIO7·4·6·5</text>
+<text x="560" y="1483" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">LEDC 50 Hz · 5V ngoài</text>
+<text x="900" y="1483" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">Vẫy chào, ngồi, cúi, lắc theo cảm xúc khi nói chuyện</text>
 <path d="M1180,52 h34" fill="none" stroke="#ea580c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 <text x="1222" y="56.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">SPI màn hình</text>
 <path d="M1385,52 h34" fill="none" stroke="#7c3aed" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -391,5 +410,7 @@
 <text x="1427" y="82.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">ToF XSHUT</text>
 <path d="M1590,78 h34" fill="none" stroke="#0891b2" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 4"/>
 <text x="1632" y="82.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">Chân trống (gợi ý)</text>
+<path d="M1180,104 h34" fill="none" stroke="#db2777" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1222" y="108.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12.5" fill="#0f172a" font-weight="normal" text-anchor="start">PWM servo</text>
 <text x="850.0" y="820" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#fca5a5" font-weight="normal" text-anchor="middle">Không dùng: GPIO26–32 (flash) · GPIO33–37 (OPI PSRAM)</text>
 </svg>
