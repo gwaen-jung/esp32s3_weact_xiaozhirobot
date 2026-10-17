@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1560" viewBox="0 0 1800 1560">
 <rect x="0" y="0" width="1800" height="1560" rx="0" fill="#f8fafc" stroke="none" stroke-width="1.5" />
 <text x="40" y="52" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="28" fill="#0f172a" font-weight="bold" text-anchor="start">XIAOZHI ROBOT “NHI” — SƠ ĐỒ ĐI DÂY &amp; PINOUT</text>
-<text x="40" y="80" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="14" fill="#64748b" font-weight="normal" text-anchor="start">WeAct ESP32-S3 N16R8 · ILI9341 2.4" · INMP441 + PCM5100A · VL53L0X · MPU6050 · 4× Servo · Xiaozhi ESP-IDF (esp32s3-weact-dog)</text>
+<text x="40" y="80" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="14" fill="#64748b" font-weight="normal" text-anchor="start">WeAct ESP32-S3 N16R8 · ILI9341 2.4" · INMP441 + WeAct I2S Speaker (PCM5100A) · VL53L0X · MPU6050 · 4× Servo · Xiaozhi ESP-IDF (esp32s3-weact-dog)</text>
 <text x="40" y="102" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="13" fill="#b45309" font-weight="normal" text-anchor="start">Sơ đồ logic: chân được nhóm theo chức năng, KHÔNG theo thứ tự vật lý trên header — dò số GPIO in trên board khi cắm dây.</text>
 <rect x="640" y="118" width="420" height="762" rx="18" fill="#1e293b" stroke="none" stroke-width="1.5" />
 <rect x="750" y="128" width="200" height="52" rx="6" fill="#334155" stroke="none" stroke-width="1.5" />
@@ -210,42 +210,64 @@
 <text x="1410" y="273" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">L/R</text>
 <rect x="1450" y="257" width="92" height="22" rx="11" fill="#111827" stroke="none" stroke-width="1.5" />
 <text x="1496.0" y="272.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">GND (kênh L)</text>
-<rect x="1300" y="310" width="260" height="175" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="2.5" />
+<rect x="1300" y="310" width="260" height="246" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="2.5" />
 <rect x="1300" y="310" width="260" height="30" rx="12" fill="#2563eb" stroke="none" stroke-width="1.5" />
 <rect x="1300" y="328" width="260" height="12" rx="0" fill="#2563eb" stroke="none" stroke-width="1.5" />
-<text x="1312" y="331" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="14" fill="#ffffff" font-weight="bold" text-anchor="start">PCM5100A DAC</text>
-<text x="1550" y="331" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#ffffff" font-weight="normal" text-anchor="end">I2S → loa kép</text>
+<text x="1312" y="331" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="14" fill="#ffffff" font-weight="bold" text-anchor="start">WeAct I2S Speaker V1</text>
+<text x="1550" y="331" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#ffffff" font-weight="normal" text-anchor="end">PCM5100A + 2 PA</text>
 <rect x="1294" y="354" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
-<text x="1312" y="364.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="start">BCK</text>
-<rect x="1294" y="388" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
-<text x="1312" y="398.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="start">LCK</text>
-<rect x="1294" y="422" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
-<text x="1312" y="432.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="start">DIN</text>
-<path d="M1160,200 V360 H1294" fill="none" stroke="#7c3aed" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1312" y="364.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="start">VCC</text>
+<rect x="1294" y="384" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
+<text x="1312" y="394.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="start">GND</text>
+<rect x="1294" y="414" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
+<text x="1312" y="424.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="start">SD</text>
+<rect x="1294" y="444" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
+<text x="1312" y="454.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="start">MC</text>
+<rect x="1294" y="474" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
+<text x="1312" y="484.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="start">BCK</text>
+<rect x="1294" y="504" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
+<text x="1312" y="514.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="start">DIN</text>
+<rect x="1294" y="534" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
+<text x="1312" y="544.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="start">WS</text>
+<rect x="1370" y="349" width="46" height="22" rx="11" fill="#dc2626" stroke="none" stroke-width="1.5" />
+<text x="1393.0" y="364.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">5V</text>
+<rect x="1370" y="379" width="46" height="22" rx="11" fill="#111827" stroke="none" stroke-width="1.5" />
+<text x="1393.0" y="394.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">GND</text>
+<rect x="1370" y="409" width="46" height="22" rx="11" fill="#dc2626" stroke="none" stroke-width="1.5" />
+<text x="1393.0" y="424.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">3V3</text>
+<text x="1424" y="424" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">bật / unmute</text>
+<rect x="1370" y="439" width="46" height="22" rx="11" fill="#111827" stroke="none" stroke-width="1.5" />
+<text x="1393.0" y="454.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">GND</text>
+<text x="1424" y="454" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">PLL nội</text>
+<text x="1370" y="484" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#7c3aed" font-weight="normal" text-anchor="start">← GPIO16 (chung mic)</text>
+<text x="1370" y="514" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#2563eb" font-weight="normal" text-anchor="start">← GPIO15</text>
+<text x="1370" y="544" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#7c3aed" font-weight="normal" text-anchor="start">← GPIO17 (chung mic)</text>
+<path d="M1160,200 V480 H1294" fill="none" stroke="#7c3aed" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="1160" cy="200" r="5" fill="#7c3aed"/>
-<path d="M1200,234 V394 H1294" fill="none" stroke="#7c3aed" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1200,234 V540 H1294" fill="none" stroke="#7c3aed" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="1200" cy="234" r="5" fill="#7c3aed"/>
-<path d="M1068,302 H1120 V428 H1294" fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1068,302 H1120 V510 H1294" fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 <circle cx="1068" cy="302" r="4" fill="#2563eb"/>
-<text x="1400" y="364" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">VIN</text>
-<rect x="1455" y="349" width="46" height="22" rx="11" fill="#dc2626" stroke="none" stroke-width="1.5" />
-<text x="1478.0" y="364.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">5V</text>
-<text x="1400" y="394" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">GND</text>
-<rect x="1455" y="379" width="46" height="22" rx="11" fill="#111827" stroke="none" stroke-width="1.5" />
-<text x="1478.0" y="394.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">GND</text>
-<text x="1400" y="424" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">SCK/MC</text>
-<rect x="1455" y="409" width="98" height="22" rx="11" fill="#111827" stroke="none" stroke-width="1.5" />
-<text x="1504.0" y="424.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">GND (PLL nội)</text>
-<text x="1400" y="454" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">XSMT</text>
-<rect x="1455" y="439" width="98" height="22" rx="11" fill="#dc2626" stroke="none" stroke-width="1.5" />
-<text x="1504.0" y="454.5" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11.5" fill="#ffffff" font-weight="bold" text-anchor="middle">3V3 (unmute)</text>
-<path d="M1560,365 H1618" stroke="#2563eb" stroke-width="2.5" fill="none"/>
-<path d="M1618,355 h12 l18,-14 v48 l-18,-14 h-12 z" fill="#e0e7ff" stroke="#2563eb" stroke-width="2"/>
-<text x="1656" y="370" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12" fill="#2563eb" font-weight="bold" text-anchor="start">Loa L</text>
-<path d="M1560,435 H1618" stroke="#2563eb" stroke-width="2.5" fill="none"/>
-<path d="M1618,425 h12 l18,-14 v48 l-18,-14 h-12 z" fill="#e0e7ff" stroke="#2563eb" stroke-width="2"/>
-<text x="1656" y="440" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12" fill="#2563eb" font-weight="bold" text-anchor="start">Loa R</text>
-<text x="1300" y="506" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">1 bus I2S full-duplex · 16 kHz · slot 32-bit · mono → cả L+R</text>
+<rect x="1554" y="354" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
+<text x="1548" y="364.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="end">R+</text>
+<rect x="1554" y="384" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
+<text x="1548" y="394.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="end">R-</text>
+<rect x="1554" y="414" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
+<text x="1548" y="424.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="end">L+</text>
+<rect x="1554" y="444" width="12" height="12" rx="2" fill="#e5e7eb" stroke="#475569" stroke-width="1" />
+<text x="1548" y="454.5" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#0f172a" font-weight="bold" text-anchor="end">L-</text>
+<path d="M1566,360 H1608 V369.0 H1622" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1566,390 H1600 V381.0 H1622" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="5 3"/>
+<path d="M1622,365.0 h12 l18,-14 v48 l-18,-14 h-12 z" fill="#e0e7ff" stroke="#2563eb" stroke-width="2"/>
+<text x="1660" y="380.0" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12" fill="#2563eb" font-weight="bold" text-anchor="start">Loa R</text>
+<path d="M1566,420 H1608 V429.0 H1622" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1566,450 H1600 V441.0 H1622" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="5 3"/>
+<path d="M1622,425.0 h12 l18,-14 v48 l-18,-14 h-12 z" fill="#e0e7ff" stroke="#2563eb" stroke-width="2"/>
+<text x="1660" y="440.0" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12" fill="#2563eb" font-weight="bold" text-anchor="start">Loa L</text>
+<text x="1574" y="484" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">Loa 4–8 Ω · mỗi loa 2 dây ±</text>
+<text x="1574" y="500" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#dc2626" font-weight="bold" text-anchor="start">KHÔNG nối loa xuống GND</text>
+<text x="1574" y="522" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">I2S full-duplex 16 kHz</text>
+<text x="1574" y="538" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="11" fill="#64748b" font-weight="normal" text-anchor="start">mono → cả L và R</text>
 <rect x="1300" y="572" width="260" height="125" rx="12" fill="#ffffff" stroke="#16a34a" stroke-width="2.5" />
 <rect x="1300" y="572" width="260" height="30" rx="12" fill="#16a34a" stroke="none" stroke-width="1.5" />
 <rect x="1300" y="590" width="260" height="12" rx="0" fill="#16a34a" stroke="none" stroke-width="1.5" />
@@ -331,10 +353,10 @@
 <text x="104" y="1032" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start">PC / sạc ≥ 1A</text>
 <rect x="400" y="980" width="270" height="70" rx="10" fill="#fff7f7" stroke="#dc2626" stroke-width="2" />
 <text x="414" y="1008" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="14" fill="#dc2626" font-weight="bold" text-anchor="start">Board 5V</text>
-<text x="414" y="1032" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start">→ PCM5100A VIN</text>
+<text x="414" y="1032" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start">→ module loa VCC</text>
 <rect x="710" y="980" width="420" height="70" rx="10" fill="#fff7f7" stroke="#dc2626" stroke-width="2" />
 <text x="724" y="1008" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="14" fill="#dc2626" font-weight="bold" text-anchor="start">LDO 3V3 (onboard)</text>
-<text x="724" y="1032" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start">→ TFT, INMP441, VL53L0X, MPU6050, XSMT</text>
+<text x="724" y="1032" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start">→ TFT, INMP441, VL53L0X, MPU6050, loa SD</text>
 <rect x="1180" y="980" width="270" height="70" rx="10" fill="#f3f4f6" stroke="#111827" stroke-width="2" />
 <text x="1194" y="1008" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="14" fill="#111827" font-weight="bold" text-anchor="start">GND chung</text>
 <text x="1194" y="1032" font-family="'Segoe UI', Roboto, Arial, sans-serif" font-size="12" fill="#0f172a" font-weight="normal" text-anchor="start">mọi module + ESP32 + nguồn ngoài</text>
