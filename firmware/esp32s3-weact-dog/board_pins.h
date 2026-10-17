@@ -16,20 +16,18 @@
 #define PIN_TFT_BL    GPIO_NUM_NC  // backlight tied to 3.3V
 
 // ---- Audio: one full-duplex I2S bus -----------------------------------------
-// INMP441 (mic, L/R -> GND = left slot) and the WeAct I2S Speaker V1
-// (PCM5100A + dual PA; header VCC GND SD MC BCK DIN WS, VCC -> 5V, SD -> 3.3V =
-// enabled, MC -> GND = internal PLL) share BCK and WS. Speakers on R+/R-, L+/L-.
+// INMP441 (mic, L/R -> GND = left slot) and PCM5100A (DAC, MC -> GND = internal
+// PLL, XSMT -> 3.3V = always unmuted) share BCLK and WS.
 #define PIN_I2S_BCLK  GPIO_NUM_16
 #define PIN_I2S_WS    GPIO_NUM_17
 #define PIN_I2S_DIN   GPIO_NUM_14  // INMP441 SD  -> ESP32
 #define PIN_I2S_DOUT  GPIO_NUM_15  // ESP32 -> PCM5100A DIN
 
-// ---- Servo legs (signal only; V+ from a separate 5 V >= 3 A supply) --------
-// FR is a continuous-rotation servo, see kLegConfig in dog_config.h.
-#define PIN_SERVO_FL  GPIO_NUM_7
-#define PIN_SERVO_FR  GPIO_NUM_4
-#define PIN_SERVO_RL  GPIO_NUM_6
-#define PIN_SERVO_RR  GPIO_NUM_5
+// ---- Servo legs: 4 PWM outputs (FL, FR, RL, RR) -----------------------------
+#define PIN_SERVO_FL  GPIO_NUM_7  // Front-Left (180°)
+#define PIN_SERVO_FR  GPIO_NUM_4  // Front-Right (360° continuous rotation)
+#define PIN_SERVO_RL  GPIO_NUM_6  // Rear-Left (360° continuous rotation)
+#define PIN_SERVO_RR  GPIO_NUM_5  // Rear-Right (180°)
 
 // ---- I2C sensors -----------------------------------------------------------
 // VL53L0X ToF at 0x29 (hand < 5 cm -> start listening). MPU6050 (0x68) shares

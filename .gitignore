@@ -10,3 +10,6 @@
 .vscode/
 compile_commands.json
 
+
+*.code-workspace
+xiaozhi-esp32/

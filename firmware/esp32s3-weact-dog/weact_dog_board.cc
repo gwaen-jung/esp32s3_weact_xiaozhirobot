@@ -1,6 +1,6 @@
 // XIAOZHI dog robot on a WeAct ESP32-S3 CoreBoard N16R8:
-// ILI9341 eyes, INMP441 mic + WeAct I2S Speaker (PCM5100A) on one I2S bus.
-// 4 servo legs (FL 7, FR 4 = 360 deg, RL 6, RR 5).
+// ILI9341 eyes, INMP441 mic + PCM5100A DAC on one full-duplex I2S bus.
+// The 4 servo legs are disabled (pins held LOW).
 #include <driver/gpio.h>
 #include <driver/i2s_std.h>
 #include <driver/spi_common.h>
@@ -20,6 +20,7 @@
 #include "eyes_display.h"
 #include "led/single_led.h"
 #include "leg_servos.h"
+#include "mcp_server.h"
 #include "tof_sensor.h"
 #include "wifi_board.h"
 
@@ -91,8 +92,8 @@ class WeactDogBoard : public WifiBoard {
 private:
     Button boot_button_;
     EyesDisplay* display_ = nullptr;
-    LegServos legs_;
     DogBehavior* behavior_ = nullptr;
+    LegServos legs_;
     TofSensor tof_{PIN_I2C_SDA, PIN_I2C_SCL, PIN_TOF_XSHUT};
 
     // Hand closer than 5 cm in front of the ToF = same as a BOOT click:
@@ -106,6 +107,110 @@ private:
                 app.ToggleChatState();
             }
         });
+    }
+
+    void InitializeMcpTools() {
+        auto& mcp_server = McpServer::GetInstance();
+
+        // 1. Tool control_dog_legs: điều khiển 4 chân thực hiện cử chỉ
+        mcp_server.AddTool(
+            "self.control_dog_legs",
+            "Điều khiển 4 chân cún robot thực hiện các cử chỉ: 'stand' (đứng thẳng), 'sit' (ngồi), "
+            "'crouch' (cúi/nằm), 'wiggle' (lắc mông mừng), 'wave' (chào/bắt tay), 'relax' (thả lỏng ngắt servo), "
+            "'zero' (về góc 0 độ).",
+            PropertyList({Property("action", kPropertyTypeString)}),
+            [this](const PropertyList& properties) -> ToolResult {
+                auto action = properties["action"].value<std::string>();
+                if (action == "stand" || action == "dung_day") {
+                    legs_.Play(LegMotion::kStand);
+                    return std::string("Gâu gâu! Cún đã đứng thẳng dậy rồi nè chủ nhân!");
+                } else if (action == "sit" || action == "ngoi_xuong") {
+                    legs_.Play(LegMotion::kSit);
+                    return std::string("Gâu! Cún đã ngồi ngoan rồi ạ!");
+                } else if (action == "crouch" || action == "nam_xuong") {
+                    legs_.Play(LegMotion::kCrouch);
+                    return std::string("Cún nằm rạp xuống sát đất rồi nha!");
+                } else if (action == "wiggle" || action == "lac_mong") {
+                    legs_.Play(LegMotion::kWiggle);
+                    return std::string("Gâu gâu gâu! Cún đang lắc mông mừng rỡ nè!");
+                } else if (action == "wave" || action == "chao") {
+                    legs_.Play(LegMotion::kWave);
+                    return std::string("Gâu! Cún giơ chân chào bạn nha!");
+                } else if (action == "relax" || action == "tha_long") {
+                    legs_.Play(LegMotion::kRelax);
+                    return std::string("Cún đã thả lỏng các khớp chân để nghỉ ngơi.");
+                } else if (action == "zero" || action == "ve_0") {
+                    legs_.Play(LegMotion::kZero);
+                    return std::string("Đã đưa các chân về góc 0 độ.");
+                }
+                return std::unexpected("Hành động không hợp lệ: " + action);
+            });
+
+        // 2. Tool set_leg_angle: điều khiển góc quay từng chân
+        mcp_server.AddTool(
+            "self.set_leg_angle",
+            "Điều khiển góc quay của một chân servo cụ thể (0 đến 180 độ). Chân gồm: 'FL', 'FR', 'RL', 'RR'.",
+            PropertyList({Property("leg", kPropertyTypeString), Property("angle", kPropertyTypeInteger)}),
+            [this](const PropertyList& properties) -> ToolResult {
+                auto leg_str = properties["leg"].value<std::string>();
+                int angle = properties["angle"].value<int>();
+                int leg_idx = -1;
+                if (leg_str == "FL" || leg_str == "fl") leg_idx = 0;
+                else if (leg_str == "FR" || leg_str == "fr") leg_idx = 1;
+                else if (leg_str == "RL" || leg_str == "rl") leg_idx = 2;
+                else if (leg_str == "RR" || leg_str == "rr") leg_idx = 3;
+                else return std::unexpected("Tên chân không hợp lệ (hãy dùng FL, FR, RL, RR): " + leg_str);
+
+                legs_.SetLegAngle(leg_idx, (float)angle);
+                char buf[64];
+                snprintf(buf, sizeof(buf), "Đã chỉnh chân %s về góc %d độ", leg_str.c_str(), angle);
+                return std::string(buf);
+            });
+
+        // 3. Tool save_stand_pose: lưu góc đứng hiện tại vào NVS
+        mcp_server.AddTool(
+            "self.save_stand_pose",
+            "Lưu góc đứng hiện tại của 4 chân vào bộ nhớ Flash NVS vĩnh viễn.",
+            PropertyList(),
+            [this](const PropertyList& /*properties*/) -> ToolResult {
+                legs_.SaveStandPose();
+                char buf[256];
+                snprintf(buf, sizeof(buf),
+                         "Đã lưu góc đứng vào Flash NVS: FL=%d°, FR=%d°, RL=%d°, RR=%d°",
+                         legs_.GetStandAngle(0), legs_.GetStandAngle(1), legs_.GetStandAngle(2), legs_.GetStandAngle(3));
+                return std::string(buf);
+            });
+
+        // 4. Tool get_leg_angles: xem góc chân hiện tại và góc đã lưu
+        mcp_server.AddTool(
+            "self.get_leg_angles",
+            "Xem góc hiện tại và góc đứng đã lưu của 4 chân.",
+            PropertyList(),
+            [this](const PropertyList& /*properties*/) -> ToolResult {
+                char buf[256];
+                snprintf(buf, sizeof(buf),
+                         "Góc hiện tại: FL=%.0f°, FR=%.0f°, RL=%.0f°, RR=%.0f° | Góc đứng đã lưu: FL=%d°, FR=%d°, RL=%d°, RR=%d°",
+                         legs_.GetLegAngle(0), legs_.GetLegAngle(1), legs_.GetLegAngle(2), legs_.GetLegAngle(3),
+                         legs_.GetStandAngle(0), legs_.GetStandAngle(1), legs_.GetStandAngle(2), legs_.GetStandAngle(3));
+                return std::string(buf);
+            });
+
+        // 5. Tool get_front_distance: đo khoảng cách ToF
+        mcp_server.AddTool(
+            "self.get_front_distance",
+            "Đo khoảng cách vật cản phía trước mặt cún (tính bằng cm/mm) bằng cảm biến laser ToF VL53L0X.",
+            PropertyList(),
+            [this](const PropertyList& /*properties*/) -> ToolResult {
+                int dist_mm = tof_.last_distance_mm();
+                if (dist_mm <= 0 || dist_mm > 2000) {
+                    return std::string("Phía trước cún thông thoáng, không có vật cản gần (khoảng cách > 2 mét).");
+                }
+                char buf[64];
+                snprintf(buf, sizeof(buf), "Khoảng cách vật cản trước mũi: %.1f cm (%d mm)", dist_mm / 10.0f, dist_mm);
+                return std::string(buf);
+            });
+
+        ESP_LOGI(TAG, "Registered Dog MCP tools: self.control_dog_legs, self.set_leg_angle, self.save_stand_pose, self.get_leg_angles, self.get_front_distance");
     }
 
     static void LogResetReason() {
@@ -188,10 +293,11 @@ public:
         InitializeSpi();
         InitializeDisplay();
         InitializeButtons();
+        InitializeMcpTools();
 #ifdef CONFIG_DOG_EYES_DEBUG_CYCLE
         display_->StartDebugCycle(2500);  // bench test: cycle moods
 #endif
-        legs_.Begin();  // task only; servos attach after Wi-Fi + audio are up
+        legs_.Begin();
         behavior_ = new DogBehavior(display_, &legs_);
         behavior_->Start();
         InitializeTof();

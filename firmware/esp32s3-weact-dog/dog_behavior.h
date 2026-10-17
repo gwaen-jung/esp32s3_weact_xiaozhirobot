@@ -1,4 +1,4 @@
-// DogBehavior: maps device state + server emotions to the eyes and the legs.
+// DogBehavior: maps device state + server emotions to the eyes and servo legs.
 // All mapping tables live in dog_behavior.cc.
 #pragma once
 
@@ -12,7 +12,7 @@
 
 class DogBehavior {
 public:
-    DogBehavior(EyesDisplay* eyes, LegServos* legs);
+    DogBehavior(EyesDisplay* eyes, LegServos* legs = nullptr);
     void Start();
 
     // Called from EyesDisplay hooks (any task). Non-blocking.
@@ -34,7 +34,7 @@ private:
     void ScheduleFidget(int64_t now);
 
     EyesDisplay* eyes_;
-    LegServos* legs_;
+    LegServos* legs_ = nullptr;
     QueueHandle_t events_ = nullptr;
     TaskHandle_t task_ = nullptr;
 
@@ -45,7 +45,6 @@ private:
     bool sleepy_ = false;
     bool emotion_active_ = false;  // a server emotion is showing (fades after a while)
     int64_t state_since_ms_ = 0;
-    int64_t last_wiggle_ms_ = 0;
     int64_t emotion_since_ms_ = 0;
     int64_t surprise_until_ms_ = 0;
     int64_t next_fidget_ms_ = 0;

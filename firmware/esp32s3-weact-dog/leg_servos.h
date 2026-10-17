@@ -24,6 +24,7 @@ enum class LegMotion : uint8_t {
     kSoftWiggle,  // small front shake (while speaking)
     kWave,        // front-left paw wave
     kBreathe,     // very small slow motion
+    kZero,        // toàn bộ chân về góc 0 độ
     kRelax,       // stop PWM on all legs now
 };
 
@@ -38,10 +39,18 @@ public:
     void AttachSequential();
     // Replace whatever is playing with this motion (non-blocking).
     void Play(LegMotion motion);
+    // Directly set target angle for a single leg (0..180 deg)
+    void SetLegAngle(int leg, float deg);
+    float GetLegAngle(int leg) const;
+    uint8_t GetStandAngle(int leg) const;
+    void SaveStandPose();
+    void ResetStandPose();
+    void LoadSettings();
     bool attached() const { return initialized_; }
     bool busy() const { return busy_; }
 
 private:
+    uint8_t stand_angle_[LEG_COUNT] = {SERVO_STAND_FL_DEG, SERVO_STAND_FR_DEG, SERVO_STAND_RL_DEG, SERVO_STAND_RR_DEG};
     struct Keyframe {
         uint8_t angle[LEG_COUNT];  // logical degrees; 0 = keep current
         uint16_t hold_ms;

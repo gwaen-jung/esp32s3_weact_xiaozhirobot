@@ -12,47 +12,46 @@
 #define TAG "DogBehavior"
 
 // ============================================================================
-// THE mapping table: server emotion -> eyes + legs.
+// THE mapping table: server emotion -> eyes.
 // Unknown strings fall back to kNeutral (never crash).
 // ============================================================================
 namespace {
 struct EmotionRule {
     const char* emotion;
     EyePreset eyes;
-    LegMotion legs;
 };
 
 const EmotionRule kEmotionTable[] = {
     // server emotions (xiaozhi LLM emoji set)
-    {"happy", EyePreset::kHappy, LegMotion::kWiggle},
-    {"laughing", EyePreset::kLaugh, LegMotion::kWave},
-    {"funny", EyePreset::kLaugh, LegMotion::kWave},
-    {"loving", EyePreset::kLove, LegMotion::kWiggle},
-    {"kissy", EyePreset::kKiss, LegMotion::kWave},
-    {"delicious", EyePreset::kDelicious, LegMotion::kWiggle},
-    {"sad", EyePreset::kSad, LegMotion::kCrouch},
-    {"crying", EyePreset::kCry, LegMotion::kCrouch},
-    {"embarrassed", EyePreset::kEmbarrassed, LegMotion::kCrouch},
-    {"angry", EyePreset::kAngry, LegMotion::kQuickStand},
-    {"surprised", EyePreset::kSurprised, LegMotion::kQuickStand},
-    {"shocked", EyePreset::kShocked, LegMotion::kQuickStand},
-    {"confused", EyePreset::kConfused, LegMotion::kSoftWiggle},
-    {"thinking", EyePreset::kThinking, LegMotion::kNone},
-    {"sleepy", EyePreset::kSleepy, LegMotion::kSit},
-    {"relaxed", EyePreset::kRelaxed, LegMotion::kBreathe},
-    {"winking", EyePreset::kWink, LegMotion::kSoftWiggle},
-    {"cool", EyePreset::kCool, LegMotion::kStand},
-    {"confident", EyePreset::kCool, LegMotion::kStand},
-    {"silly", EyePreset::kSilly, LegMotion::kWiggle},
+    {"happy", EyePreset::kHappy},
+    {"laughing", EyePreset::kLaugh},
+    {"funny", EyePreset::kLaugh},
+    {"loving", EyePreset::kLove},
+    {"kissy", EyePreset::kKiss},
+    {"delicious", EyePreset::kDelicious},
+    {"sad", EyePreset::kSad},
+    {"crying", EyePreset::kCry},
+    {"embarrassed", EyePreset::kEmbarrassed},
+    {"angry", EyePreset::kAngry},
+    {"surprised", EyePreset::kSurprised},
+    {"shocked", EyePreset::kShocked},
+    {"confused", EyePreset::kConfused},
+    {"thinking", EyePreset::kThinking},
+    {"sleepy", EyePreset::kSleepy},
+    {"relaxed", EyePreset::kRelaxed},
+    {"winking", EyePreset::kWink},
+    {"cool", EyePreset::kCool},
+    {"confident", EyePreset::kCool},
+    {"silly", EyePreset::kSilly},
     // device-side emotions sent by the firmware core
-    {"robot_2", EyePreset::kBoot, LegMotion::kNone},
-    {"warning", EyePreset::kError, LegMotion::kNone},
-    {"cloud_off", EyePreset::kError, LegMotion::kNone},
-    {"cancel", EyePreset::kError, LegMotion::kNone},
-    {"gear", EyePreset::kError, LegMotion::kNone},          // Wi-Fi provisioning
-    {"link", EyePreset::kNeutral, LegMotion::kNone},        // activation code shown
-    {"download", EyePreset::kThinking, LegMotion::kNone},   // OTA
-    {"cloud_download", EyePreset::kThinking, LegMotion::kNone},
+    {"robot_2", EyePreset::kBoot},
+    {"warning", EyePreset::kError},
+    {"cloud_off", EyePreset::kError},
+    {"cancel", EyePreset::kError},
+    {"gear", EyePreset::kError},          // Wi-Fi provisioning
+    {"link", EyePreset::kNeutral},        // activation code shown
+    {"download", EyePreset::kThinking},   // OTA
+    {"cloud_download", EyePreset::kThinking},
 };
 
 // ============================================================================
@@ -61,19 +60,18 @@ const EmotionRule kEmotionTable[] = {
 struct StateRule {
     DeviceState state;
     EyePreset eyes;
-    LegMotion legs;
 };
 
 const StateRule kStateTable[] = {
-    {kDeviceStateStarting, EyePreset::kBoot, LegMotion::kNone},
-    {kDeviceStateIdle, EyePreset::kIdle, LegMotion::kStand},
-    {kDeviceStateConnecting, EyePreset::kThinking, LegMotion::kNone},
-    {kDeviceStateListening, EyePreset::kListening, LegMotion::kStand},
-    {kDeviceStateSpeaking, EyePreset::kSpeaking, LegMotion::kSoftWiggle},
-    {kDeviceStateWifiConfiguring, EyePreset::kError, LegMotion::kNone},
-    {kDeviceStateActivating, EyePreset::kNeutral, LegMotion::kNone},
-    {kDeviceStateUpgrading, EyePreset::kThinking, LegMotion::kNone},
-    {kDeviceStateFatalError, EyePreset::kError, LegMotion::kRelax},
+    {kDeviceStateStarting, EyePreset::kBoot},
+    {kDeviceStateIdle, EyePreset::kIdle},
+    {kDeviceStateConnecting, EyePreset::kThinking},
+    {kDeviceStateListening, EyePreset::kListening},
+    {kDeviceStateSpeaking, EyePreset::kSpeaking},
+    {kDeviceStateWifiConfiguring, EyePreset::kError},
+    {kDeviceStateActivating, EyePreset::kNeutral},
+    {kDeviceStateUpgrading, EyePreset::kThinking},
+    {kDeviceStateFatalError, EyePreset::kError},
 };
 // "Thinking" is not an upstream state: Listening + user text received.
 constexpr EyePreset kThinkingEyes = EyePreset::kThinking;
@@ -129,10 +127,17 @@ void DogBehavior::HandleState(DeviceState state, int64_t now) {
 
     eyes_->SetSpeaking(state == kDeviceStateSpeaking);
 
-    // Servos are powered only once Wi-Fi and audio are up (first Idle).
-    if (state == kDeviceStateIdle && !servos_started_) {
-        servos_started_ = true;
-        legs_->AttachSequential();
+    if (legs_ != nullptr) {
+        if (!servos_started_ && (state == kDeviceStateIdle || state == kDeviceStateListening || state == kDeviceStateSpeaking)) {
+            servos_started_ = true;
+            legs_->AttachSequential();
+            legs_->Play(LegMotion::kStand);
+        } else if (servos_started_) {
+            if (sat_down_ && (state == kDeviceStateListening || state == kDeviceStateSpeaking)) {
+                sat_down_ = false;
+                legs_->Play(LegMotion::kStand);
+            }
+        }
     }
 
     // After a conversation, keep the last emotion on screen for a moment
@@ -146,9 +151,6 @@ void DogBehavior::HandleState(DeviceState state, int64_t now) {
     for (const auto& r : kStateTable) {
         if (r.state != state) continue;
         eyes_->ApplyPreset(r.eyes);
-        if (r.legs == LegMotion::kStand) sat_down_ = false;
-        legs_->Play(r.legs);
-        if (r.legs == LegMotion::kSoftWiggle) last_wiggle_ms_ = now;
         return;
     }
 }
@@ -167,11 +169,19 @@ void DogBehavior::HandleEmotion(const char* emotion, int64_t now) {
         if (strcmp(r.emotion, emotion) != 0) continue;
         eyes_->ApplyPreset(r.eyes);
         if (r.eyes == EyePreset::kSurprised) surprise_until_ms_ = now + DOG_SURPRISE_MS;
-        legs_->Play(r.legs);
-        if (r.legs != LegMotion::kNone) last_wiggle_ms_ = now;  // don't overlap a soft wiggle
-        sat_down_ = r.legs == LegMotion::kSit;
         emotion_active_ = true;
         emotion_since_ms_ = now;
+        if (legs_ != nullptr && legs_->attached()) {
+            if (strcmp(emotion, "happy") == 0 || strcmp(emotion, "laughing") == 0 ||
+                strcmp(emotion, "funny") == 0 || strcmp(emotion, "silly") == 0) {
+                legs_->Play(LegMotion::kWiggle);
+            } else if (strcmp(emotion, "winking") == 0 || strcmp(emotion, "cool") == 0 ||
+                       strcmp(emotion, "confident") == 0) {
+                legs_->Play(LegMotion::kWave);
+            } else if (strcmp(emotion, "sad") == 0 || strcmp(emotion, "crying") == 0) {
+                legs_->Play(LegMotion::kCrouch);
+            }
+        }
         return;
     }
     ESP_LOGW(TAG, "unknown emotion '%s' -> neutral", emotion);
@@ -219,18 +229,11 @@ void DogBehavior::Loop() {
             eyes_->SetCuriosity(false);
         }
 
-        if (state_ == kDeviceStateSpeaking && !legs_->busy() &&
-            now - last_wiggle_ms_ > DOG_SPEAK_WIGGLE_EVERY_MS) {
-            last_wiggle_ms_ = now;
-            legs_->Play(LegMotion::kSoftWiggle);
-        }
-        if (state_ == kDeviceStateIdle && !sat_down_ && legs_->attached() &&
-            now - state_since_ms_ > DOG_IDLE_SIT_AFTER_MS) {
-            sat_down_ = true;
-            legs_->Play(LegMotion::kSit);  // PWM is cut automatically after the hold
-        }
-
         if (state_ == kDeviceStateIdle) {
+            if (legs_ != nullptr && legs_->attached() && !sat_down_ && now - state_since_ms_ > DOG_IDLE_SIT_AFTER_MS) {
+                sat_down_ = true;
+                legs_->Play(LegMotion::kSit);
+            }
             if (emotion_active_ && now - emotion_since_ms_ > DOG_EMOTION_HOLD_MS / 2) {
                 emotion_active_ = false;  // post-chat emotion has been shown long enough
                 eyes_->ApplyPreset(EyePreset::kIdle);
