@@ -1,0 +1,815 @@
+From 83c405f7230da273581b28060a274a627f1672bd Mon Sep 17 00:00:00 2001
+From: Truong Huy Hoa <huyhoa308@gmail.com>
+Date: Sat, 17 Oct 2026 09:03:13 +0700
+Subject: [PATCH 4/4] feat(dog): re-enable the 4 servo legs for the final
+ wiring
+
+FL 7, FR 4, RL 6, RR 5, same direction on every leg, 500-2500 us like the
+bench test; FR is a continuous-rotation servo and is never driven. Emotions
+and states drive leg motions again (wiggle, wave, crouch, sit, quick stand,
+soft wiggle while speaking, sit after 60 s idle). Comments updated for the
+WeAct I2S Speaker V1 module.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ main/boards/esp32s3-weact-dog/README.md       |  11 +-
+ main/boards/esp32s3-weact-dog/board_pins.h    |  10 +-
+ main/boards/esp32s3-weact-dog/dog_behavior.cc | 103 ++++---
+ main/boards/esp32s3-weact-dog/dog_behavior.h  |  11 +-
+ main/boards/esp32s3-weact-dog/dog_config.h    |  49 +++-
+ main/boards/esp32s3-weact-dog/leg_servos.cc   | 273 ++++++++++++++++++
+ main/boards/esp32s3-weact-dog/leg_servos.h    |  78 +++++
+ .../esp32s3-weact-dog/weact_dog_board.cc      |  26 +-
+ 8 files changed, 487 insertions(+), 74 deletions(-)
+ create mode 100644 main/boards/esp32s3-weact-dog/leg_servos.cc
+ create mode 100644 main/boards/esp32s3-weact-dog/leg_servos.h
+
+diff --git a/main/boards/esp32s3-weact-dog/README.md b/main/boards/esp32s3-weact-dog/README.md
+index 637485f..0f4cff8 100644
+--- a/main/boards/esp32s3-weact-dog/README.md
++++ b/main/boards/esp32s3-weact-dog/README.md
+@@ -1,7 +1,7 @@
+ # esp32s3-weact-dog: XIAOZHI desk dog robot
+ 
+ WeAct ESP32-S3 CoreBoard N16R8 + ILI9341 2.4" TFT (animated RoboEyes) + INMP441 mic
+-+ PCM5100A I2S DAC. Chats through the Xiaozhi cloud. Servo legs are disabled.
+++ WeAct I2S Speaker V1 (PCM5100A + dual PA) + 4 servo legs. Chats through the Xiaozhi cloud.
+ 
+ ## Wiring
+ 
+@@ -16,8 +16,8 @@ WeAct ESP32-S3 CoreBoard N16R8 + ILI9341 2.4" TFT (animated RoboEyes) + INMP441
+ | I2S BCLK (shared) | 16 | INMP441 SCK + PCM5100A BCK |
+ | I2S WS (shared) | 17 | INMP441 WS + PCM5100A LCK |
+ | Mic data in | 14 | INMP441 SD (L/R -> GND) |
+-| DAC data out | 15 | PCM5100A DIN (SCK/MC -> GND, XSMT -> 3.3 V) |
+-| Servo FL / FR / RL / RR | 7 / 4 / 6 / 5 | **disabled**, held LOW |
++| DAC data out | 15 | Speaker module DIN (VCC 5 V, SD -> 3.3 V, MC -> GND, speakers on R+/R-, L+/L-) |
++| Servo FL / FR / RL / RR | 7 / 4 / 6 / 5 | signal; V+ from 5 V >= 3 A, common GND. FR = 360 deg, kept still |
+ | Push-to-talk | 0 | BOOT button |
+ | Status LED | 48 | onboard WS2812 |
+ | Reserved | 8 SDA / 9 SCL / 21 XSHUT (ToF, IMU), 1 (wake button) | not used yet |
+@@ -60,7 +60,8 @@ compiled into the firmware.
+ |---|---|
+ | Pins | `board_pins.h` |
+ | Panel orientation, colour order, SPI speed, audio rate, default volume | `config.h` |
+-| Eye colours per mood, sizes, fps, overlay colours, idle timings | `dog_config.h` |
++| Eye colours per mood, sizes, fps, overlay colours, idle timings; servo legs (`kLegConfig`: trim, invert, 360) | `dog_config.h` |
++| Leg poses and motions | keyframe tables at the top of `leg_servos.cc` |
+ | State/emotion -> eyes | tables at the top of `dog_behavior.cc` |
+ | Wi-Fi buffers (PSRAM) | `config.json` `sdkconfig_append` |
+ 
+@@ -100,7 +101,7 @@ Volume can also be changed by voice ("giam am luong").
+   lower latency, fewer router-side disconnects.
+ - Wi-Fi/LWIP buffers moved to PSRAM and enlarged (more RX/TX buffers, bigger BA window
+   and TCP window) so the voice stream does not stall on packet bursts.
+-- Servos removed: no more current spikes / brownouts that used to drop Wi-Fi.
++- Servos run from their own 5 V supply, at most 2 move at once and PWM is cut after 1 s, so they do not brown out the board.
+ 
+ ## License
+ 
+diff --git a/main/boards/esp32s3-weact-dog/board_pins.h b/main/boards/esp32s3-weact-dog/board_pins.h
+index efc7f46..b49bef3 100644
+--- a/main/boards/esp32s3-weact-dog/board_pins.h
++++ b/main/boards/esp32s3-weact-dog/board_pins.h
+@@ -16,16 +16,16 @@
+ #define PIN_TFT_BL    GPIO_NUM_NC  // backlight tied to 3.3V
+ 
+ // ---- Audio: one full-duplex I2S bus -----------------------------------------
+-// INMP441 (mic, L/R -> GND = left slot) and PCM5100A (DAC, MC -> GND = internal
+-// PLL, XSMT -> 3.3V = always unmuted) share BCLK and WS.
++// INMP441 (mic, L/R -> GND = left slot) and the WeAct I2S Speaker V1
++// (PCM5100A + dual PA; header VCC GND SD MC BCK DIN WS, VCC -> 5V, SD -> 3.3V =
++// enabled, MC -> GND = internal PLL) share BCK and WS. Speakers on R+/R-, L+/L-.
+ #define PIN_I2S_BCLK  GPIO_NUM_16
+ #define PIN_I2S_WS    GPIO_NUM_17
+ #define PIN_I2S_DIN   GPIO_NUM_14  // INMP441 SD  -> ESP32
+ #define PIN_I2S_DOUT  GPIO_NUM_15  // ESP32 -> PCM5100A DIN
+ 
+-// ---- Servo legs: DISABLED ---------------------------------------------------
+-// The legs are not driven by this firmware. The signal pins are held LOW at
+-// boot so the servos get no pulses and stay limp and quiet.
++// ---- Servo legs (signal only; V+ from a separate 5 V >= 3 A supply) --------
++// FR is a continuous-rotation servo, see kLegConfig in dog_config.h.
+ #define PIN_SERVO_FL  GPIO_NUM_7
+ #define PIN_SERVO_FR  GPIO_NUM_4
+ #define PIN_SERVO_RL  GPIO_NUM_6
+diff --git a/main/boards/esp32s3-weact-dog/dog_behavior.cc b/main/boards/esp32s3-weact-dog/dog_behavior.cc
+index c781ea4..5fa7230 100644
+--- a/main/boards/esp32s3-weact-dog/dog_behavior.cc
++++ b/main/boards/esp32s3-weact-dog/dog_behavior.cc
+@@ -12,46 +12,47 @@
+ #define TAG "DogBehavior"
+ 
+ // ============================================================================
+-// THE mapping table: server emotion -> eyes.
++// THE mapping table: server emotion -> eyes + legs.
+ // Unknown strings fall back to kNeutral (never crash).
+ // ============================================================================
+ namespace {
+ struct EmotionRule {
+     const char* emotion;
+     EyePreset eyes;
++    LegMotion legs;
+ };
+ 
+ const EmotionRule kEmotionTable[] = {
+     // server emotions (xiaozhi LLM emoji set)
+-    {"happy", EyePreset::kHappy},
+-    {"laughing", EyePreset::kLaugh},
+-    {"funny", EyePreset::kLaugh},
+-    {"loving", EyePreset::kLove},
+-    {"kissy", EyePreset::kKiss},
+-    {"delicious", EyePreset::kDelicious},
+-    {"sad", EyePreset::kSad},
+-    {"crying", EyePreset::kCry},
+-    {"embarrassed", EyePreset::kEmbarrassed},
+-    {"angry", EyePreset::kAngry},
+-    {"surprised", EyePreset::kSurprised},
+-    {"shocked", EyePreset::kShocked},
+-    {"confused", EyePreset::kConfused},
+-    {"thinking", EyePreset::kThinking},
+-    {"sleepy", EyePreset::kSleepy},
+-    {"relaxed", EyePreset::kRelaxed},
+-    {"winking", EyePreset::kWink},
+-    {"cool", EyePreset::kCool},
+-    {"confident", EyePreset::kCool},
+-    {"silly", EyePreset::kSilly},
++    {"happy", EyePreset::kHappy, LegMotion::kWiggle},
++    {"laughing", EyePreset::kLaugh, LegMotion::kWave},
++    {"funny", EyePreset::kLaugh, LegMotion::kWave},
++    {"loving", EyePreset::kLove, LegMotion::kWiggle},
++    {"kissy", EyePreset::kKiss, LegMotion::kWave},
++    {"delicious", EyePreset::kDelicious, LegMotion::kWiggle},
++    {"sad", EyePreset::kSad, LegMotion::kCrouch},
++    {"crying", EyePreset::kCry, LegMotion::kCrouch},
++    {"embarrassed", EyePreset::kEmbarrassed, LegMotion::kCrouch},
++    {"angry", EyePreset::kAngry, LegMotion::kQuickStand},
++    {"surprised", EyePreset::kSurprised, LegMotion::kQuickStand},
++    {"shocked", EyePreset::kShocked, LegMotion::kQuickStand},
++    {"confused", EyePreset::kConfused, LegMotion::kSoftWiggle},
++    {"thinking", EyePreset::kThinking, LegMotion::kNone},
++    {"sleepy", EyePreset::kSleepy, LegMotion::kSit},
++    {"relaxed", EyePreset::kRelaxed, LegMotion::kBreathe},
++    {"winking", EyePreset::kWink, LegMotion::kSoftWiggle},
++    {"cool", EyePreset::kCool, LegMotion::kStand},
++    {"confident", EyePreset::kCool, LegMotion::kStand},
++    {"silly", EyePreset::kSilly, LegMotion::kWiggle},
+     // device-side emotions sent by the firmware core
+-    {"robot_2", EyePreset::kBoot},
+-    {"warning", EyePreset::kError},
+-    {"cloud_off", EyePreset::kError},
+-    {"cancel", EyePreset::kError},
+-    {"gear", EyePreset::kError},          // Wi-Fi provisioning
+-    {"link", EyePreset::kNeutral},        // activation code shown
+-    {"download", EyePreset::kThinking},   // OTA
+-    {"cloud_download", EyePreset::kThinking},
++    {"robot_2", EyePreset::kBoot, LegMotion::kNone},
++    {"warning", EyePreset::kError, LegMotion::kNone},
++    {"cloud_off", EyePreset::kError, LegMotion::kNone},
++    {"cancel", EyePreset::kError, LegMotion::kNone},
++    {"gear", EyePreset::kError, LegMotion::kNone},          // Wi-Fi provisioning
++    {"link", EyePreset::kNeutral, LegMotion::kNone},        // activation code shown
++    {"download", EyePreset::kThinking, LegMotion::kNone},   // OTA
++    {"cloud_download", EyePreset::kThinking, LegMotion::kNone},
+ };
+ 
+ // ============================================================================
+@@ -60,18 +61,19 @@ const EmotionRule kEmotionTable[] = {
+ struct StateRule {
+     DeviceState state;
+     EyePreset eyes;
++    LegMotion legs;
+ };
+ 
+ const StateRule kStateTable[] = {
+-    {kDeviceStateStarting, EyePreset::kBoot},
+-    {kDeviceStateIdle, EyePreset::kIdle},
+-    {kDeviceStateConnecting, EyePreset::kThinking},
+-    {kDeviceStateListening, EyePreset::kListening},
+-    {kDeviceStateSpeaking, EyePreset::kSpeaking},
+-    {kDeviceStateWifiConfiguring, EyePreset::kError},
+-    {kDeviceStateActivating, EyePreset::kNeutral},
+-    {kDeviceStateUpgrading, EyePreset::kThinking},
+-    {kDeviceStateFatalError, EyePreset::kError},
++    {kDeviceStateStarting, EyePreset::kBoot, LegMotion::kNone},
++    {kDeviceStateIdle, EyePreset::kIdle, LegMotion::kStand},
++    {kDeviceStateConnecting, EyePreset::kThinking, LegMotion::kNone},
++    {kDeviceStateListening, EyePreset::kListening, LegMotion::kStand},
++    {kDeviceStateSpeaking, EyePreset::kSpeaking, LegMotion::kSoftWiggle},
++    {kDeviceStateWifiConfiguring, EyePreset::kError, LegMotion::kNone},
++    {kDeviceStateActivating, EyePreset::kNeutral, LegMotion::kNone},
++    {kDeviceStateUpgrading, EyePreset::kThinking, LegMotion::kNone},
++    {kDeviceStateFatalError, EyePreset::kError, LegMotion::kRelax},
+ };
+ // "Thinking" is not an upstream state: Listening + user text received.
+ constexpr EyePreset kThinkingEyes = EyePreset::kThinking;
+@@ -83,7 +85,7 @@ int64_t now_ms() { return esp_timer_get_time() / 1000; }
+ int64_t rand_between(int64_t lo, int64_t hi) { return lo + (int64_t)(esp_random() % (uint32_t)(hi - lo + 1)); }
+ }  // namespace
+ 
+-DogBehavior::DogBehavior(EyesDisplay* eyes) : eyes_(eyes) {
++DogBehavior::DogBehavior(EyesDisplay* eyes, LegServos* legs) : eyes_(eyes), legs_(legs) {
+     events_ = xQueueCreate(8, sizeof(Event));
+ }
+ 
+@@ -127,6 +129,12 @@ void DogBehavior::HandleState(DeviceState state, int64_t now) {
+ 
+     eyes_->SetSpeaking(state == kDeviceStateSpeaking);
+ 
++    // Servos are powered only once Wi-Fi and audio are up (first Idle).
++    if (state == kDeviceStateIdle && !servos_started_) {
++        servos_started_ = true;
++        legs_->AttachSequential();
++    }
++
+     // After a conversation, keep the last emotion on screen for a moment
+     // instead of snapping straight back to the idle look.
+     if (state == kDeviceStateIdle && prev == kDeviceStateSpeaking && emotion_active_) {
+@@ -138,6 +146,9 @@ void DogBehavior::HandleState(DeviceState state, int64_t now) {
+     for (const auto& r : kStateTable) {
+         if (r.state != state) continue;
+         eyes_->ApplyPreset(r.eyes);
++        if (r.legs == LegMotion::kStand) sat_down_ = false;
++        legs_->Play(r.legs);
++        if (r.legs == LegMotion::kSoftWiggle) last_wiggle_ms_ = now;
+         return;
+     }
+ }
+@@ -156,6 +167,9 @@ void DogBehavior::HandleEmotion(const char* emotion, int64_t now) {
+         if (strcmp(r.emotion, emotion) != 0) continue;
+         eyes_->ApplyPreset(r.eyes);
+         if (r.eyes == EyePreset::kSurprised) surprise_until_ms_ = now + DOG_SURPRISE_MS;
++        legs_->Play(r.legs);
++        if (r.legs != LegMotion::kNone) last_wiggle_ms_ = now;  // don't overlap a soft wiggle
++        sat_down_ = r.legs == LegMotion::kSit;
+         emotion_active_ = true;
+         emotion_since_ms_ = now;
+         return;
+@@ -205,6 +219,17 @@ void DogBehavior::Loop() {
+             eyes_->SetCuriosity(false);
+         }
+ 
++        if (state_ == kDeviceStateSpeaking && !legs_->busy() &&
++            now - last_wiggle_ms_ > DOG_SPEAK_WIGGLE_EVERY_MS) {
++            last_wiggle_ms_ = now;
++            legs_->Play(LegMotion::kSoftWiggle);
++        }
++        if (state_ == kDeviceStateIdle && !sat_down_ && legs_->attached() &&
++            now - state_since_ms_ > DOG_IDLE_SIT_AFTER_MS) {
++            sat_down_ = true;
++            legs_->Play(LegMotion::kSit);  // PWM is cut automatically after the hold
++        }
++
+         if (state_ == kDeviceStateIdle) {
+             if (emotion_active_ && now - emotion_since_ms_ > DOG_EMOTION_HOLD_MS / 2) {
+                 emotion_active_ = false;  // post-chat emotion has been shown long enough
+diff --git a/main/boards/esp32s3-weact-dog/dog_behavior.h b/main/boards/esp32s3-weact-dog/dog_behavior.h
+index b2f1adf..de486bd 100644
+--- a/main/boards/esp32s3-weact-dog/dog_behavior.h
++++ b/main/boards/esp32s3-weact-dog/dog_behavior.h
+@@ -1,5 +1,5 @@
+-// DogBehavior: maps device state + server emotions to the eyes.
+-// All mapping tables live in dog_behavior.cc. (Servo legs are disabled.)
++// DogBehavior: maps device state + server emotions to the eyes and the legs.
++// All mapping tables live in dog_behavior.cc.
+ #pragma once
+ 
+ #include <freertos/FreeRTOS.h>
+@@ -8,10 +8,11 @@
+ 
+ #include "device_state.h"
+ #include "eyes_display.h"
++#include "leg_servos.h"
+ 
+ class DogBehavior {
+ public:
+-    explicit DogBehavior(EyesDisplay* eyes);
++    DogBehavior(EyesDisplay* eyes, LegServos* legs);
+     void Start();
+ 
+     // Called from EyesDisplay hooks (any task). Non-blocking.
+@@ -33,14 +34,18 @@ private:
+     void ScheduleFidget(int64_t now);
+ 
+     EyesDisplay* eyes_;
++    LegServos* legs_;
+     QueueHandle_t events_ = nullptr;
+     TaskHandle_t task_ = nullptr;
+ 
+     DeviceState state_ = kDeviceStateUnknown;
++    bool servos_started_ = false;
++    bool sat_down_ = false;
+     bool thinking_ = false;
+     bool sleepy_ = false;
+     bool emotion_active_ = false;  // a server emotion is showing (fades after a while)
+     int64_t state_since_ms_ = 0;
++    int64_t last_wiggle_ms_ = 0;
+     int64_t emotion_since_ms_ = 0;
+     int64_t surprise_until_ms_ = 0;
+     int64_t next_fidget_ms_ = 0;
+diff --git a/main/boards/esp32s3-weact-dog/dog_config.h b/main/boards/esp32s3-weact-dog/dog_config.h
+index 52ffc30..02aead8 100644
+--- a/main/boards/esp32s3-weact-dog/dog_config.h
++++ b/main/boards/esp32s3-weact-dog/dog_config.h
+@@ -1,9 +1,11 @@
+-// Tunable constants for the eyes and the behaviour. No magic numbers elsewhere.
+-// (Servo legs are disabled in this firmware: no servo constants.)
++// Tunable constants for the eyes, the servo legs and the behaviour.
++// No magic numbers elsewhere.
+ #pragma once
+ 
+ #include <cstdint>
+ 
++#include "board_pins.h"
++
+ // ============================================================================
+ // Eyes
+ // ============================================================================
+@@ -65,9 +67,52 @@
+ // How long an assistant sentence stays on screen
+ #define EYES_CHAT_TEXT_MS     6000
+ 
++// ============================================================================
++// Servo legs
++// ============================================================================
++enum LegId : uint8_t { LEG_FL = 0, LEG_FR = 1, LEG_RL = 2, LEG_RR = 3, LEG_COUNT = 4 };
++
++struct LegConfig {
++    gpio_num_t gpio;
++    int8_t trim_deg;  // added to the logical angle
++    bool invert;      // mirror around 90 deg
++    bool is_360;      // continuous-rotation servo: never driven (kept still)
++};
++
++// Matches src/test_servo.cpp on the bench: same direction on every leg, FR is
++// a 360 deg servo. Set FR is_360 = false if it is replaced by a 180 deg servo.
++// Logical convention: angle > 90 moves the leg "forward/down".
++static constexpr LegConfig kLegConfig[LEG_COUNT] = {
++    {PIN_SERVO_FL, 0, false, false},
++    {PIN_SERVO_FR, 0, false, true},
++    {PIN_SERVO_RL, 0, false, false},
++    {PIN_SERVO_RR, 0, false, false},
++};
++
++#define SERVO_NEUTRAL_DEG        90
++#define SERVO_MIN_DEG            45    // hard safety clamp
++#define SERVO_MAX_DEG            135   // hard safety clamp
++#define SERVO_PULSE_MIN_US       500   // pulse at 0 deg (as test_servo.cpp)
++#define SERVO_PULSE_MAX_US       2500  // pulse at 180 deg
++#define SERVO_PWM_HZ             50
++#define SERVO_PWM_BITS           14
++#define SERVO_LEDC_TIMER         LEDC_TIMER_1
++#define SERVO_LEDC_FIRST_CHANNEL LEDC_CHANNEL_2  // channels 2..5
++
++#define SERVO_SLEW_DEG_PER_S     90    // ramp speed limit
++#define SERVO_MAX_MOVING         2     // never more than 2 servos moving at once
++#define SERVO_STAGGER_MS         80    // delay between two servo start-ups
++#define SERVO_DETACH_AFTER_MS    1000  // stop PWM when a pose is held this long
++#define SERVO_TICK_MS            20    // control loop period
++#define SERVO_INIT_GAP_MS        300   // sequential attach at boot
++#define SERVO_TASK_PRIORITY      3
++#define SERVO_TASK_STACK         4096
++
+ // ============================================================================
+ // Behaviour
+ // ============================================================================
++#define DOG_IDLE_SIT_AFTER_MS    60000  // idle this long -> sit, then PWM off
++#define DOG_SPEAK_WIGGLE_EVERY_MS 3500  // soft wiggle cadence while speaking
+ #define DOG_SURPRISE_MS          1500   // how long "surprised" curiosity lasts
+ #define DOG_EMOTION_HOLD_MS      8000   // an emotion fades back to neutral after this (idle)
+ #define DOG_IDLE_SLEEPY_AFTER_MS 180000 // idle this long -> sleepy eyes + Zzz
+diff --git a/main/boards/esp32s3-weact-dog/leg_servos.cc b/main/boards/esp32s3-weact-dog/leg_servos.cc
+new file mode 100644
+index 0000000..b42caff
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/leg_servos.cc
+@@ -0,0 +1,273 @@
++#include "leg_servos.h"
++
++#include <driver/gpio.h>
++#include <esp_log.h>
++#include <esp_timer.h>
++
++#include <cmath>
++
++#define TAG "LegServos"
++
++// ---------------------------------------------------------------------------
++// Motion library (logical degrees, 90 = neutral; 0 = keep this leg as is).
++// Order of legs: FL, FR, RL, RR.
++// ---------------------------------------------------------------------------
++namespace {
++struct Motion {
++    const void* frames;
++    int count;
++    bool quick;
++};
++#define KF(fl, fr, rl, rr, hold) {{fl, fr, rl, rr}, hold}
++
++struct KeyframeDef {
++    uint8_t angle[LEG_COUNT];
++    uint16_t hold_ms;
++};
++
++const KeyframeDef kStand[] = {KF(90, 90, 90, 90, 0)};
++const KeyframeDef kSit[] = {KF(0, 0, 125, 125, 200), KF(100, 100, 0, 0, 0)};
++const KeyframeDef kCrouch[] = {KF(65, 65, 65, 65, 0)};
++const KeyframeDef kWiggle[] = {
++    KF(90, 90, 90, 90, 0),  KF(0, 0, 80, 100, 40), KF(0, 0, 100, 80, 40),
++    KF(0, 0, 80, 100, 40),  KF(0, 0, 100, 80, 40), KF(0, 0, 80, 100, 40),
++    KF(0, 0, 100, 80, 40),  KF(0, 0, 90, 90, 0),
++};
++const KeyframeDef kSoftWiggle[] = {
++    KF(96, 84, 0, 0, 60), KF(84, 96, 0, 0, 60), KF(96, 84, 0, 0, 60), KF(90, 90, 0, 0, 0),
++};
++const KeyframeDef kWave[] = {
++    KF(90, 90, 90, 90, 0), KF(130, 0, 0, 0, 120), KF(110, 0, 0, 0, 40), KF(130, 0, 0, 0, 40),
++    KF(110, 0, 0, 0, 40),  KF(130, 0, 0, 0, 120), KF(90, 0, 0, 0, 0),
++};
++const KeyframeDef kBreathe[] = {
++    KF(94, 94, 0, 0, 400), KF(0, 0, 94, 94, 400), KF(90, 90, 0, 0, 300), KF(0, 0, 90, 90, 0),
++};
++#undef KF
++#define MOTION(arr, quick) Motion{arr, (int)(sizeof(arr) / sizeof(arr[0])), quick}
++
++Motion MotionFor(LegMotion m) {
++    switch (m) {
++        case LegMotion::kStand: return MOTION(kStand, false);
++        case LegMotion::kQuickStand: return MOTION(kStand, true);
++        case LegMotion::kSit: return MOTION(kSit, false);
++        case LegMotion::kCrouch: return MOTION(kCrouch, false);
++        case LegMotion::kWiggle: return MOTION(kWiggle, false);
++        case LegMotion::kSoftWiggle: return MOTION(kSoftWiggle, false);
++        case LegMotion::kWave: return MOTION(kWave, false);
++        case LegMotion::kBreathe: return MOTION(kBreathe, false);
++        default: return Motion{nullptr, 0, false};
++    }
++}
++}  // namespace
++
++const char* LegMotionName(LegMotion m) {
++    switch (m) {
++        case LegMotion::kNone: return "none";
++        case LegMotion::kStand: return "stand";
++        case LegMotion::kQuickStand: return "quick_stand";
++        case LegMotion::kSit: return "sit";
++        case LegMotion::kCrouch: return "crouch";
++        case LegMotion::kWiggle: return "wiggle";
++        case LegMotion::kSoftWiggle: return "soft_wiggle";
++        case LegMotion::kWave: return "wave";
++        case LegMotion::kBreathe: return "idle_breathe";
++        case LegMotion::kRelax: return "relax";
++    }
++    return "?";
++}
++
++static_assert(sizeof(KeyframeDef) == sizeof(uint8_t) * LEG_COUNT + sizeof(uint16_t),
++              "keyframe layout");
++
++LegServos::LegServos() {
++    for (int i = 0; i < LEG_COUNT; ++i) {
++        legs_[i].channel = (ledc_channel_t)(SERVO_LEDC_FIRST_CHANNEL + i);
++    }
++}
++
++int64_t LegServos::NowMs() { return esp_timer_get_time() / 1000; }
++
++void LegServos::Begin() {
++    if (task_ != nullptr) return;
++    queue_ = xQueueCreate(4, sizeof(uint8_t));
++    xTaskCreate(&LegServos::TaskEntry, "legs", SERVO_TASK_STACK, this, SERVO_TASK_PRIORITY, &task_);
++}
++
++void LegServos::AttachSequential() {
++    if (queue_ == nullptr) return;
++    uint8_t cmd = kCmdAttach;
++    xQueueSend(queue_, &cmd, 0);
++}
++
++void LegServos::Play(LegMotion motion) {
++    if (queue_ == nullptr || motion == LegMotion::kNone) return;
++    uint8_t cmd = (uint8_t)motion;
++    if (xQueueSend(queue_, &cmd, 0) != pdTRUE) {
++        ESP_LOGW(TAG, "motion queue full, dropping %s", LegMotionName(motion));
++    }
++}
++
++void LegServos::WriteAngle(int leg, float logical) {
++    // Continuous-rotation servo: an angle is a speed, never drive it.
++    if (kLegConfig[leg].is_360) return;
++    // Clamp the logical angle, apply mount direction + trim, clamp again.
++    logical = std::fmin(std::fmax(logical, (float)SERVO_MIN_DEG), (float)SERVO_MAX_DEG);
++    const LegConfig& cfg = kLegConfig[leg];
++    float phys = cfg.invert ? 180.0f - logical : logical;
++    phys += cfg.trim_deg;
++    phys = std::fmin(std::fmax(phys, (float)SERVO_MIN_DEG), (float)SERVO_MAX_DEG);
++
++    float pulse_us = SERVO_PULSE_MIN_US + (SERVO_PULSE_MAX_US - SERVO_PULSE_MIN_US) * phys / 180.0f;
++    uint32_t period_us = 1000000 / SERVO_PWM_HZ;
++    uint32_t duty = (uint32_t)(pulse_us * (float)(1 << SERVO_PWM_BITS) / (float)period_us);
++    ledc_set_duty(LEDC_LOW_SPEED_MODE, legs_[leg].channel, duty);
++    ledc_update_duty(LEDC_LOW_SPEED_MODE, legs_[leg].channel);  // also re-enables output
++    legs_[leg].attached = true;
++}
++
++void LegServos::Detach(int leg) {
++    ledc_stop(LEDC_LOW_SPEED_MODE, legs_[leg].channel, 0);
++    legs_[leg].attached = false;
++}
++
++void LegServos::LoadMotion(LegMotion m) {
++    if (m == LegMotion::kRelax) {
++        frames_ = nullptr;
++        frame_count_ = 0;
++        for (int i = 0; i < LEG_COUNT; ++i) {
++            legs_[i].target = legs_[i].current;
++            legs_[i].moving = false;
++            if (legs_[i].attached) Detach(i);
++        }
++        busy_ = false;
++        return;
++    }
++    Motion mo = MotionFor(m);
++    if (mo.frames == nullptr) return;
++    ESP_LOGI(TAG, "play %s", LegMotionName(m));
++    frames_ = static_cast<const Keyframe*>(mo.frames);
++    frame_count_ = mo.count;
++    frame_index_ = 0;
++    frame_active_ = false;
++    frame_settled_ms_ = 0;
++    quick_ = mo.quick;
++    busy_ = true;
++}
++
++void LegServos::TaskEntry(void* arg) { static_cast<LegServos*>(arg)->Loop(); }
++
++void LegServos::Loop() {
++    const float step = (float)SERVO_SLEW_DEG_PER_S * SERVO_TICK_MS / 1000.0f;
++    TickType_t last = xTaskGetTickCount();
++    while (true) {
++        uint8_t cmd;
++        while (xQueueReceive(queue_, &cmd, 0) == pdTRUE) {
++            if (cmd == kCmdAttach) {
++                if (initialized_) continue;
++                ledc_timer_config_t timer = {};
++                timer.speed_mode = LEDC_LOW_SPEED_MODE;
++                timer.duty_resolution = (ledc_timer_bit_t)SERVO_PWM_BITS;
++                timer.timer_num = SERVO_LEDC_TIMER;
++                timer.freq_hz = SERVO_PWM_HZ;
++                timer.clk_cfg = LEDC_AUTO_CLK;
++                ESP_ERROR_CHECK(ledc_timer_config(&timer));
++                for (int i = 0; i < LEG_COUNT; ++i) {
++                    if (kLegConfig[i].is_360) {
++                        // No PWM at all = a continuous-rotation servo stands still.
++                        gpio_set_direction(kLegConfig[i].gpio, GPIO_MODE_OUTPUT);
++                        gpio_set_level(kLegConfig[i].gpio, 0);
++                        ESP_LOGI(TAG, "leg %d on GPIO%d is a 360 servo: kept still", i,
++                                 (int)kLegConfig[i].gpio);
++                        continue;
++                    }
++                    ledc_channel_config_t ch = {};
++                    ch.gpio_num = kLegConfig[i].gpio;
++                    ch.speed_mode = LEDC_LOW_SPEED_MODE;
++                    ch.channel = legs_[i].channel;
++                    ch.timer_sel = SERVO_LEDC_TIMER;
++                    ch.duty = 0;
++                    ch.hpoint = 0;
++                    ESP_ERROR_CHECK(ledc_channel_config(&ch));
++                    // One servo at a time; position before first power-up is
++                    // unknown, so this single jump is unavoidable.
++                    legs_[i].current = legs_[i].target = SERVO_NEUTRAL_DEG;
++                    WriteAngle(i, SERVO_NEUTRAL_DEG);
++                    legs_[i].settled_ms = NowMs();
++                    ESP_LOGI(TAG, "attached leg %d on GPIO%d", i, (int)kLegConfig[i].gpio);
++                    vTaskDelay(pdMS_TO_TICKS(SERVO_INIT_GAP_MS));
++                }
++                initialized_ = true;
++            } else if (initialized_) {
++                LoadMotion((LegMotion)cmd);
++            }
++        }
++
++        int64_t now = NowMs();
++        if (initialized_) {
++            // 1) start the next keyframe
++            if (frames_ != nullptr && !frame_active_ && frame_index_ < frame_count_) {
++                const Keyframe& kf = frames_[frame_index_];
++                for (int i = 0; i < LEG_COUNT; ++i) {
++                    if (kf.angle[i] != 0 && !kLegConfig[i].is_360) legs_[i].target = kf.angle[i];
++                }
++                frame_active_ = true;
++                frame_settled_ms_ = 0;
++            }
++
++            // 2) start legs that need to move, max SERVO_MAX_MOVING, staggered
++            int moving = 0;
++            for (auto& l : legs_) moving += l.moving ? 1 : 0;
++            for (int i = 0; i < LEG_COUNT; ++i) {
++                Leg& l = legs_[i];
++                if (l.moving || std::fabs(l.target - l.current) < 0.5f) continue;
++                if (moving >= SERVO_MAX_MOVING || now - last_start_ms_ < SERVO_STAGGER_MS) break;
++                l.moving = true;
++                last_start_ms_ = now;
++                moving++;
++                if (!l.attached) WriteAngle(i, l.current);  // re-attach at known position
++            }
++
++            // 3) ramp moving legs
++            bool all_settled = true;
++            for (int i = 0; i < LEG_COUNT; ++i) {
++                Leg& l = legs_[i];
++                if (l.moving) {
++                    float d = l.target - l.current;
++                    if (std::fabs(d) <= step) {
++                        l.current = l.target;
++                        l.moving = false;
++                        l.settled_ms = now;
++                    } else {
++                        l.current += d > 0 ? step : -step;
++                    }
++                    WriteAngle(i, l.current);
++                }
++                if (l.moving || std::fabs(l.target - l.current) >= 0.5f) all_settled = false;
++            }
++
++            // 4) keyframe hold / advance
++            if (frame_active_ && all_settled) {
++                if (frame_settled_ms_ == 0) frame_settled_ms_ = now;
++                uint16_t hold = quick_ ? 0 : frames_[frame_index_].hold_ms;
++                if (now - frame_settled_ms_ >= hold) {
++                    frame_active_ = false;
++                    if (++frame_index_ >= frame_count_) {
++                        frames_ = nullptr;
++                        busy_ = false;
++                    }
++                }
++            }
++
++            // 5) cut PWM on legs holding a pose for too long
++            for (int i = 0; i < LEG_COUNT; ++i) {
++                Leg& l = legs_[i];
++                if (l.attached && !l.moving && std::fabs(l.target - l.current) < 0.5f &&
++                    now - l.settled_ms >= SERVO_DETACH_AFTER_MS) {
++                    Detach(i);
++                }
++            }
++        }
++        vTaskDelayUntil(&last, pdMS_TO_TICKS(SERVO_TICK_MS));
++    }
++}
+diff --git a/main/boards/esp32s3-weact-dog/leg_servos.h b/main/boards/esp32s3-weact-dog/leg_servos.h
+new file mode 100644
+index 0000000..4b6b3f5
+--- /dev/null
++++ b/main/boards/esp32s3-weact-dog/leg_servos.h
+@@ -0,0 +1,78 @@
++// LegServos: 4 symbolic servo "legs" with hard power-safety rules:
++//  - at most SERVO_MAX_MOVING servos in motion, start-ups staggered
++//  - slew-rate limited ramps, never an instant jump (except the very first attach)
++//  - PWM detached after a pose is held SERVO_DETACH_AFTER_MS
++//  - runs in its own task; Play() never blocks the caller
++#pragma once
++
++#include <driver/ledc.h>
++#include <freertos/FreeRTOS.h>
++#include <freertos/queue.h>
++#include <freertos/task.h>
++
++#include <cstdint>
++
++#include "dog_config.h"
++
++enum class LegMotion : uint8_t {
++    kNone,
++    kStand,
++    kQuickStand,  // stand, but with no pauses between keyframes
++    kSit,
++    kCrouch,
++    kWiggle,      // alternating rear shake
++    kSoftWiggle,  // small front shake (while speaking)
++    kWave,        // front-left paw wave
++    kBreathe,     // very small slow motion
++    kRelax,       // stop PWM on all legs now
++};
++
++const char* LegMotionName(LegMotion m);
++
++class LegServos {
++public:
++    LegServos();
++    // Creates the task. Servos stay unpowered until AttachSequential().
++    void Begin();
++    // Sequentially attach every servo at neutral (call once Wi-Fi + audio are up).
++    void AttachSequential();
++    // Replace whatever is playing with this motion (non-blocking).
++    void Play(LegMotion motion);
++    bool attached() const { return initialized_; }
++    bool busy() const { return busy_; }
++
++private:
++    struct Keyframe {
++        uint8_t angle[LEG_COUNT];  // logical degrees; 0 = keep current
++        uint16_t hold_ms;
++    };
++    struct Leg {
++        float current = SERVO_NEUTRAL_DEG;
++        float target = SERVO_NEUTRAL_DEG;
++        bool attached = false;
++        bool moving = false;
++        int64_t settled_ms = 0;
++        ledc_channel_t channel = LEDC_CHANNEL_0;
++    };
++    enum Cmd : uint8_t { kCmdAttach = 0xF0 };
++
++    static void TaskEntry(void* arg);
++    void Loop();
++    void LoadMotion(LegMotion m);
++    void WriteAngle(int leg, float logical_deg);
++    void Detach(int leg);
++    static int64_t NowMs();
++
++    Leg legs_[LEG_COUNT];
++    const Keyframe* frames_ = nullptr;
++    int frame_count_ = 0;
++    int frame_index_ = 0;
++    bool frame_active_ = false;
++    bool quick_ = false;
++    int64_t frame_settled_ms_ = 0;
++    int64_t last_start_ms_ = 0;
++    volatile bool initialized_ = false;
++    volatile bool busy_ = false;
++    QueueHandle_t queue_ = nullptr;
++    TaskHandle_t task_ = nullptr;
++};
+diff --git a/main/boards/esp32s3-weact-dog/weact_dog_board.cc b/main/boards/esp32s3-weact-dog/weact_dog_board.cc
+index 5bbef18..e2e2d59 100644
+--- a/main/boards/esp32s3-weact-dog/weact_dog_board.cc
++++ b/main/boards/esp32s3-weact-dog/weact_dog_board.cc
+@@ -1,6 +1,6 @@
+ // XIAOZHI dog robot on a WeAct ESP32-S3 CoreBoard N16R8:
+-// ILI9341 eyes, INMP441 mic + PCM5100A DAC on one full-duplex I2S bus.
+-// The 4 servo legs are disabled (pins held LOW).
++// ILI9341 eyes, INMP441 mic + WeAct I2S Speaker (PCM5100A) on one I2S bus.
++// 4 servo legs (FL 7, FR 4 = 360 deg, RL 6, RR 5).
+ #include <driver/gpio.h>
+ #include <driver/i2s_std.h>
+ #include <driver/spi_common.h>
+@@ -19,6 +19,7 @@
+ #include "dog_config.h"
+ #include "eyes_display.h"
+ #include "led/single_led.h"
++#include "leg_servos.h"
+ #include "tof_sensor.h"
+ #include "wifi_board.h"
+ 
+@@ -90,6 +91,7 @@ class WeactDogBoard : public WifiBoard {
+ private:
+     Button boot_button_;
+     EyesDisplay* display_ = nullptr;
++    LegServos legs_;
+     DogBehavior* behavior_ = nullptr;
+     TofSensor tof_{PIN_I2C_SDA, PIN_I2C_SCL, PIN_TOF_XSHUT};
+ 
+@@ -128,22 +130,6 @@ private:
+         }
+     }
+ 
+-    // Legs are disabled: drive the servo signal lines LOW so the servos get no
+-    // pulses (no twitching, no current spikes that disturb Wi-Fi).
+-    static void ParkServoPins() {
+-        gpio_config_t io = {};
+-        io.pin_bit_mask = (1ULL << PIN_SERVO_FL) | (1ULL << PIN_SERVO_FR) |
+-                          (1ULL << PIN_SERVO_RL) | (1ULL << PIN_SERVO_RR);
+-        io.mode = GPIO_MODE_OUTPUT;
+-        io.pull_up_en = GPIO_PULLUP_DISABLE;
+-        io.pull_down_en = GPIO_PULLDOWN_DISABLE;
+-        gpio_config(&io);
+-        gpio_set_level(PIN_SERVO_FL, 0);
+-        gpio_set_level(PIN_SERVO_FR, 0);
+-        gpio_set_level(PIN_SERVO_RL, 0);
+-        gpio_set_level(PIN_SERVO_RR, 0);
+-    }
+-
+     void InitializeSpi() {
+         spi_bus_config_t buscfg = {};
+         buscfg.mosi_io_num = PIN_TFT_MOSI;
+@@ -199,14 +185,14 @@ private:
+ public:
+     WeactDogBoard() : boot_button_(BOOT_BUTTON_GPIO) {
+         LogResetReason();
+-        ParkServoPins();
+         InitializeSpi();
+         InitializeDisplay();
+         InitializeButtons();
+ #ifdef CONFIG_DOG_EYES_DEBUG_CYCLE
+         display_->StartDebugCycle(2500);  // bench test: cycle moods
+ #endif
+-        behavior_ = new DogBehavior(display_);
++        legs_.Begin();  // task only; servos attach after Wi-Fi + audio are up
++        behavior_ = new DogBehavior(display_, &legs_);
+         behavior_->Start();
+         InitializeTof();
+     }
+-- 
+2.44.0.windows.1
+

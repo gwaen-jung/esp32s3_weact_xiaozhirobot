@@ -12,46 +12,47 @@
 #define TAG "DogBehavior"
 
 // ============================================================================
-// THE mapping table: server emotion -> eyes.
+// THE mapping table: server emotion -> eyes + legs.
 // Unknown strings fall back to kNeutral (never crash).
 // ============================================================================
 namespace {
 struct EmotionRule {
     const char* emotion;
     EyePreset eyes;
+    LegMotion legs;
 };
 
 const EmotionRule kEmotionTable[] = {
     // server emotions (xiaozhi LLM emoji set)
-    {"happy", EyePreset::kHappy},
-    {"laughing", EyePreset::kLaugh},
-    {"funny", EyePreset::kLaugh},
-    {"loving", EyePreset::kLove},
-    {"kissy", EyePreset::kKiss},
-    {"delicious", EyePreset::kDelicious},
-    {"sad", EyePreset::kSad},
-    {"crying", EyePreset::kCry},
-    {"embarrassed", EyePreset::kEmbarrassed},
-    {"angry", EyePreset::kAngry},
-    {"surprised", EyePreset::kSurprised},
-    {"shocked", EyePreset::kShocked},
-    {"confused", EyePreset::kConfused},
-    {"thinking", EyePreset::kThinking},
-    {"sleepy", EyePreset::kSleepy},
-    {"relaxed", EyePreset::kRelaxed},
-    {"winking", EyePreset::kWink},
-    {"cool", EyePreset::kCool},
-    {"confident", EyePreset::kCool},
-    {"silly", EyePreset::kSilly},
+    {"happy", EyePreset::kHappy, LegMotion::kWiggle},
+    {"laughing", EyePreset::kLaugh, LegMotion::kWave},
+    {"funny", EyePreset::kLaugh, LegMotion::kWave},
+    {"loving", EyePreset::kLove, LegMotion::kWiggle},
+    {"kissy", EyePreset::kKiss, LegMotion::kWave},
+    {"delicious", EyePreset::kDelicious, LegMotion::kWiggle},
+    {"sad", EyePreset::kSad, LegMotion::kCrouch},
+    {"crying", EyePreset::kCry, LegMotion::kCrouch},
+    {"embarrassed", EyePreset::kEmbarrassed, LegMotion::kCrouch},
+    {"angry", EyePreset::kAngry, LegMotion::kQuickStand},
+    {"surprised", EyePreset::kSurprised, LegMotion::kQuickStand},
+    {"shocked", EyePreset::kShocked, LegMotion::kQuickStand},
+    {"confused", EyePreset::kConfused, LegMotion::kSoftWiggle},
+    {"thinking", EyePreset::kThinking, LegMotion::kNone},
+    {"sleepy", EyePreset::kSleepy, LegMotion::kSit},
+    {"relaxed", EyePreset::kRelaxed, LegMotion::kBreathe},
+    {"winking", EyePreset::kWink, LegMotion::kSoftWiggle},
+    {"cool", EyePreset::kCool, LegMotion::kStand},
+    {"confident", EyePreset::kCool, LegMotion::kStand},
+    {"silly", EyePreset::kSilly, LegMotion::kWiggle},
     // device-side emotions sent by the firmware core
-    {"robot_2", EyePreset::kBoot},
-    {"warning", EyePreset::kError},
-    {"cloud_off", EyePreset::kError},
-    {"cancel", EyePreset::kError},
-    {"gear", EyePreset::kError},          // Wi-Fi provisioning
-    {"link", EyePreset::kNeutral},        // activation code shown
-    {"download", EyePreset::kThinking},   // OTA
-    {"cloud_download", EyePreset::kThinking},
+    {"robot_2", EyePreset::kBoot, LegMotion::kNone},
+    {"warning", EyePreset::kError, LegMotion::kNone},
+    {"cloud_off", EyePreset::kError, LegMotion::kNone},
+    {"cancel", EyePreset::kError, LegMotion::kNone},
+    {"gear", EyePreset::kError, LegMotion::kNone},          // Wi-Fi provisioning
+    {"link", EyePreset::kNeutral, LegMotion::kNone},        // activation code shown
+    {"download", EyePreset::kThinking, LegMotion::kNone},   // OTA
+    {"cloud_download", EyePreset::kThinking, LegMotion::kNone},
 };
 
 // ============================================================================
@@ -60,18 +61,19 @@ const EmotionRule kEmotionTable[] = {
 struct StateRule {
     DeviceState state;
     EyePreset eyes;
+    LegMotion legs;
 };
 
 const StateRule kStateTable[] = {
-    {kDeviceStateStarting, EyePreset::kBoot},
-    {kDeviceStateIdle, EyePreset::kIdle},
-    {kDeviceStateConnecting, EyePreset::kThinking},
-    {kDeviceStateListening, EyePreset::kListening},
-    {kDeviceStateSpeaking, EyePreset::kSpeaking},
-    {kDeviceStateWifiConfiguring, EyePreset::kError},
-    {kDeviceStateActivating, EyePreset::kNeutral},
-    {kDeviceStateUpgrading, EyePreset::kThinking},
-    {kDeviceStateFatalError, EyePreset::kError},
+    {kDeviceStateStarting, EyePreset::kBoot, LegMotion::kNone},
+    {kDeviceStateIdle, EyePreset::kIdle, LegMotion::kStand},
+    {kDeviceStateConnecting, EyePreset::kThinking, LegMotion::kNone},
+    {kDeviceStateListening, EyePreset::kListening, LegMotion::kStand},
+    {kDeviceStateSpeaking, EyePreset::kSpeaking, LegMotion::kSoftWiggle},
+    {kDeviceStateWifiConfiguring, EyePreset::kError, LegMotion::kNone},
+    {kDeviceStateActivating, EyePreset::kNeutral, LegMotion::kNone},
+    {kDeviceStateUpgrading, EyePreset::kThinking, LegMotion::kNone},
+    {kDeviceStateFatalError, EyePreset::kError, LegMotion::kRelax},
 };
 // "Thinking" is not an upstream state: Listening + user text received.
 constexpr EyePreset kThinkingEyes = EyePreset::kThinking;
@@ -83,7 +85,7 @@ int64_t now_ms() { return esp_timer_get_time() / 1000; }
 int64_t rand_between(int64_t lo, int64_t hi) { return lo + (int64_t)(esp_random() % (uint32_t)(hi - lo + 1)); }
 }  // namespace
 
-DogBehavior::DogBehavior(EyesDisplay* eyes) : eyes_(eyes) {
+DogBehavior::DogBehavior(EyesDisplay* eyes, LegServos* legs) : eyes_(eyes), legs_(legs) {
     events_ = xQueueCreate(8, sizeof(Event));
 }
 
@@ -127,6 +129,12 @@ void DogBehavior::HandleState(DeviceState state, int64_t now) {
 
     eyes_->SetSpeaking(state == kDeviceStateSpeaking);
 
+    // Servos are powered only once Wi-Fi and audio are up (first Idle).
+    if (state == kDeviceStateIdle && !servos_started_) {
+        servos_started_ = true;
+        legs_->AttachSequential();
+    }
+
     // After a conversation, keep the last emotion on screen for a moment
     // instead of snapping straight back to the idle look.
     if (state == kDeviceStateIdle && prev == kDeviceStateSpeaking && emotion_active_) {
@@ -138,6 +146,9 @@ void DogBehavior::HandleState(DeviceState state, int64_t now) {
     for (const auto& r : kStateTable) {
         if (r.state != state) continue;
         eyes_->ApplyPreset(r.eyes);
+        if (r.legs == LegMotion::kStand) sat_down_ = false;
+        legs_->Play(r.legs);
+        if (r.legs == LegMotion::kSoftWiggle) last_wiggle_ms_ = now;
         return;
     }
 }
@@ -156,6 +167,9 @@ void DogBehavior::HandleEmotion(const char* emotion, int64_t now) {
         if (strcmp(r.emotion, emotion) != 0) continue;
         eyes_->ApplyPreset(r.eyes);
         if (r.eyes == EyePreset::kSurprised) surprise_until_ms_ = now + DOG_SURPRISE_MS;
+        legs_->Play(r.legs);
+        if (r.legs != LegMotion::kNone) last_wiggle_ms_ = now;  // don't overlap a soft wiggle
+        sat_down_ = r.legs == LegMotion::kSit;
         emotion_active_ = true;
         emotion_since_ms_ = now;
         return;
@@ -203,6 +217,17 @@ void DogBehavior::Loop() {
         if (surprise_until_ms_ != 0 && now > surprise_until_ms_) {
             surprise_until_ms_ = 0;
             eyes_->SetCuriosity(false);
+        }
+
+        if (state_ == kDeviceStateSpeaking && !legs_->busy() &&
+            now - last_wiggle_ms_ > DOG_SPEAK_WIGGLE_EVERY_MS) {
+            last_wiggle_ms_ = now;
+            legs_->Play(LegMotion::kSoftWiggle);
+        }
+        if (state_ == kDeviceStateIdle && !sat_down_ && legs_->attached() &&
+            now - state_since_ms_ > DOG_IDLE_SIT_AFTER_MS) {
+            sat_down_ = true;
+            legs_->Play(LegMotion::kSit);  // PWM is cut automatically after the hold
         }
 
         if (state_ == kDeviceStateIdle) {

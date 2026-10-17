@@ -1,8 +1,10 @@
-// Tunable constants for the eyes and the behaviour. No magic numbers elsewhere.
-// (Servo legs are disabled in this firmware: no servo constants.)
+// Tunable constants for the eyes, the servo legs and the behaviour.
+// No magic numbers elsewhere.
 #pragma once
 
 #include <cstdint>
+
+#include "board_pins.h"
 
 // ============================================================================
 // Eyes
@@ -66,8 +68,51 @@
 #define EYES_CHAT_TEXT_MS     6000
 
 // ============================================================================
+// Servo legs
+// ============================================================================
+enum LegId : uint8_t { LEG_FL = 0, LEG_FR = 1, LEG_RL = 2, LEG_RR = 3, LEG_COUNT = 4 };
+
+struct LegConfig {
+    gpio_num_t gpio;
+    int8_t trim_deg;  // added to the logical angle
+    bool invert;      // mirror around 90 deg
+    bool is_360;      // continuous-rotation servo: never driven (kept still)
+};
+
+// Matches src/test_servo.cpp on the bench: same direction on every leg, FR is
+// a 360 deg servo. Set FR is_360 = false if it is replaced by a 180 deg servo.
+// Logical convention: angle > 90 moves the leg "forward/down".
+static constexpr LegConfig kLegConfig[LEG_COUNT] = {
+    {PIN_SERVO_FL, 0, false, false},
+    {PIN_SERVO_FR, 0, false, true},
+    {PIN_SERVO_RL, 0, false, false},
+    {PIN_SERVO_RR, 0, false, false},
+};
+
+#define SERVO_NEUTRAL_DEG        90
+#define SERVO_MIN_DEG            45    // hard safety clamp
+#define SERVO_MAX_DEG            135   // hard safety clamp
+#define SERVO_PULSE_MIN_US       500   // pulse at 0 deg (as test_servo.cpp)
+#define SERVO_PULSE_MAX_US       2500  // pulse at 180 deg
+#define SERVO_PWM_HZ             50
+#define SERVO_PWM_BITS           14
+#define SERVO_LEDC_TIMER         LEDC_TIMER_1
+#define SERVO_LEDC_FIRST_CHANNEL LEDC_CHANNEL_2  // channels 2..5
+
+#define SERVO_SLEW_DEG_PER_S     90    // ramp speed limit
+#define SERVO_MAX_MOVING         2     // never more than 2 servos moving at once
+#define SERVO_STAGGER_MS         80    // delay between two servo start-ups
+#define SERVO_DETACH_AFTER_MS    1000  // stop PWM when a pose is held this long
+#define SERVO_TICK_MS            20    // control loop period
+#define SERVO_INIT_GAP_MS        300   // sequential attach at boot
+#define SERVO_TASK_PRIORITY      3
+#define SERVO_TASK_STACK         4096
+
+// ============================================================================
 // Behaviour
 // ============================================================================
+#define DOG_IDLE_SIT_AFTER_MS    60000  // idle this long -> sit, then PWM off
+#define DOG_SPEAK_WIGGLE_EVERY_MS 3500  // soft wiggle cadence while speaking
 #define DOG_SURPRISE_MS          1500   // how long "surprised" curiosity lasts
 #define DOG_EMOTION_HOLD_MS      8000   // an emotion fades back to neutral after this (idle)
 #define DOG_IDLE_SLEEPY_AFTER_MS 180000 // idle this long -> sleepy eyes + Zzz

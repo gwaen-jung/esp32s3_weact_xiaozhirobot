@@ -6,8 +6,8 @@ Firmware AI chính của robot, chạy trên nền [78/xiaozhi-esp32](https://gi
 | Thư mục | Nội dung |
 |---|---|
 | `esp32s3-weact-dog/` | Mã nguồn board (copy vào `main/boards/esp32s3-weact-dog/`) |
-| `patches/` | 3 patch `git format-patch` từ `c0fe42a`: board + đăng ký Kconfig/CMake + docs |
-| `docs/` | Kế hoạch, test log, checklist phần cứng của bản port đầu tiên (còn nhắc tới servo, đã bỏ) |
+| `patches/` | 4 patch `git format-patch` từ `c0fe42a`: board + đăng ký Kconfig/CMake + docs |
+| `docs/` | Kế hoạch, test log, checklist phần cứng của bản port đầu tiên (lịch sử, có thể đã cũ) |
 | `build_flash.ps1` | Script build + nạp trên Windows |
 
 ## Tính năng
@@ -21,7 +21,9 @@ Firmware AI chính của robot, chạy trên nền [78/xiaozhi-esp32](https://gi
   - **Đưa tay gần cảm biến ToF VL53L0X** (I2C 8/9, XSHUT 21) → vào chế độ nghe.
   - Nút BOOT vẫn dùng được.
 - Wi-Fi ổn định hơn: tắt power save, buffer Wi-Fi/LWIP trong PSRAM.
-- Servo chân **đã tắt** (chân 7/4/6/5 giữ mức LOW).
+- 4 servo chân: FL 7, FR 4, RL 6, RR 5 (FR là servo 360° nên được giữ đứng yên). Chân cử động theo cảm xúc
+  (vẫy, lắc, cúi, ngồi, nhún khi nói), cấu hình ở `kLegConfig` trong `dog_config.h`.
+- Module loa WeAct I2S Speaker V1 (PCM5100A + 2 PA): VCC 5V, SD 3V3, MC GND, loa vào R± / L±.
 
 Chi tiết cấu hình và bảng cảm xúc: [`esp32s3-weact-dog/README.md`](esp32s3-weact-dog/README.md).
 

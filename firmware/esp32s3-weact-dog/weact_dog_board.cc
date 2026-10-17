@@ -1,6 +1,6 @@
 // XIAOZHI dog robot on a WeAct ESP32-S3 CoreBoard N16R8:
-// ILI9341 eyes, INMP441 mic + PCM5100A DAC on one full-duplex I2S bus.
-// The 4 servo legs are disabled (pins held LOW).
+// ILI9341 eyes, INMP441 mic + WeAct I2S Speaker (PCM5100A) on one I2S bus.
+// 4 servo legs (FL 7, FR 4 = 360 deg, RL 6, RR 5).
 #include <driver/gpio.h>
 #include <driver/i2s_std.h>
 #include <driver/spi_common.h>
@@ -19,6 +19,7 @@
 #include "dog_config.h"
 #include "eyes_display.h"
 #include "led/single_led.h"
+#include "leg_servos.h"
 #include "tof_sensor.h"
 #include "wifi_board.h"
 
@@ -90,6 +91,7 @@ class WeactDogBoard : public WifiBoard {
 private:
     Button boot_button_;
     EyesDisplay* display_ = nullptr;
+    LegServos legs_;
     DogBehavior* behavior_ = nullptr;
     TofSensor tof_{PIN_I2C_SDA, PIN_I2C_SCL, PIN_TOF_XSHUT};
 
@@ -126,22 +128,6 @@ private:
         } else {
             ESP_LOGI(TAG, "Reset reason: %s", name);
         }
-    }
-
-    // Legs are disabled: drive the servo signal lines LOW so the servos get no
-    // pulses (no twitching, no current spikes that disturb Wi-Fi).
-    static void ParkServoPins() {
-        gpio_config_t io = {};
-        io.pin_bit_mask = (1ULL << PIN_SERVO_FL) | (1ULL << PIN_SERVO_FR) |
-                          (1ULL << PIN_SERVO_RL) | (1ULL << PIN_SERVO_RR);
-        io.mode = GPIO_MODE_OUTPUT;
-        io.pull_up_en = GPIO_PULLUP_DISABLE;
-        io.pull_down_en = GPIO_PULLDOWN_DISABLE;
-        gpio_config(&io);
-        gpio_set_level(PIN_SERVO_FL, 0);
-        gpio_set_level(PIN_SERVO_FR, 0);
-        gpio_set_level(PIN_SERVO_RL, 0);
-        gpio_set_level(PIN_SERVO_RR, 0);
     }
 
     void InitializeSpi() {
@@ -199,14 +185,14 @@ private:
 public:
     WeactDogBoard() : boot_button_(BOOT_BUTTON_GPIO) {
         LogResetReason();
-        ParkServoPins();
         InitializeSpi();
         InitializeDisplay();
         InitializeButtons();
 #ifdef CONFIG_DOG_EYES_DEBUG_CYCLE
         display_->StartDebugCycle(2500);  // bench test: cycle moods
 #endif
-        behavior_ = new DogBehavior(display_);
+        legs_.Begin();  // task only; servos attach after Wi-Fi + audio are up
+        behavior_ = new DogBehavior(display_, &legs_);
         behavior_->Start();
         InitializeTof();
     }

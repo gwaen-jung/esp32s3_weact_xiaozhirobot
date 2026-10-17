@@ -1,7 +1,7 @@
 # esp32s3-weact-dog: XIAOZHI desk dog robot
 
 WeAct ESP32-S3 CoreBoard N16R8 + ILI9341 2.4" TFT (animated RoboEyes) + INMP441 mic
-+ PCM5100A I2S DAC. Chats through the Xiaozhi cloud. Servo legs are disabled.
++ WeAct I2S Speaker V1 (PCM5100A + dual PA) + 4 servo legs. Chats through the Xiaozhi cloud.
 
 ## Wiring
 
@@ -16,8 +16,8 @@ WeAct ESP32-S3 CoreBoard N16R8 + ILI9341 2.4" TFT (animated RoboEyes) + INMP441 
 | I2S BCLK (shared) | 16 | INMP441 SCK + PCM5100A BCK |
 | I2S WS (shared) | 17 | INMP441 WS + PCM5100A LCK |
 | Mic data in | 14 | INMP441 SD (L/R -> GND) |
-| DAC data out | 15 | PCM5100A DIN (SCK/MC -> GND, XSMT -> 3.3 V) |
-| Servo FL / FR / RL / RR | 7 / 4 / 6 / 5 | **disabled**, held LOW |
+| DAC data out | 15 | Speaker module DIN (VCC 5 V, SD -> 3.3 V, MC -> GND, speakers on R+/R-, L+/L-) |
+| Servo FL / FR / RL / RR | 7 / 4 / 6 / 5 | signal; V+ from 5 V >= 3 A, common GND. FR = 360 deg, kept still |
 | Push-to-talk | 0 | BOOT button |
 | Status LED | 48 | onboard WS2812 |
 | Reserved | 8 SDA / 9 SCL / 21 XSHUT (ToF, IMU), 1 (wake button) | not used yet |
@@ -60,7 +60,8 @@ compiled into the firmware.
 |---|---|
 | Pins | `board_pins.h` |
 | Panel orientation, colour order, SPI speed, audio rate, default volume | `config.h` |
-| Eye colours per mood, sizes, fps, overlay colours, idle timings | `dog_config.h` |
+| Eye colours per mood, sizes, fps, overlay colours, idle timings; servo legs (`kLegConfig`: trim, invert, 360) | `dog_config.h` |
+| Leg poses and motions | keyframe tables at the top of `leg_servos.cc` |
 | State/emotion -> eyes | tables at the top of `dog_behavior.cc` |
 | Wi-Fi buffers (PSRAM) | `config.json` `sdkconfig_append` |
 
@@ -100,7 +101,7 @@ Volume can also be changed by voice ("giam am luong").
   lower latency, fewer router-side disconnects.
 - Wi-Fi/LWIP buffers moved to PSRAM and enlarged (more RX/TX buffers, bigger BA window
   and TCP window) so the voice stream does not stall on packet bursts.
-- Servos removed: no more current spikes / brownouts that used to drop Wi-Fi.
+- Servos run from their own 5 V supply, at most 2 move at once and PWM is cut after 1 s, so they do not brown out the board.
 
 ## License
 

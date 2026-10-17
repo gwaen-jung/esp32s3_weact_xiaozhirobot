@@ -1,7 +1,7 @@
 From 06038fe0140b047922c7d99720e21c77be622cac Mon Sep 17 00:00:00 2001
 From: Truong Huy Hoa <huyhoa308@gmail.com>
 Date: Wed, 14 Oct 2026 23:09:46 +0700
-Subject: [PATCH 3/3] feat(dog): real pins, no servos, richer eyes, ToF listen,
+Subject: [PATCH 3/4] feat(dog): real pins, no servos, richer eyes, ToF listen,
  "Chao Nhi" wake word
 
 - Pins match the verified hardware: one full-duplex I2S bus (BCLK 16, WS 17,
