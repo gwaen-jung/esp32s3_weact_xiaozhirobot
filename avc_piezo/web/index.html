@@ -1,0 +1,358 @@
+<title>AVC Piezo Dầm Công-xôn</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Be+Vietnam+Pro:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Bố cục: tờ bản vẽ kỹ thuật – khung tên ở đầu, mô phỏng là "mẫu thử" sống, các bản vẽ/bảng xếp theo hồ sơ thi công */
+:root{
+  --paper:#eef0ec; --sheet:#f8f9f6; --ink:#1a2124; --ink2:#4c585d; --rule:#c5ccc8; --grid:#dfe4e0;
+  --alu:#8d989c; --brass:#a8741a; --pzt:#d9d4c3; --sense:#16788a; --act:#c2571a; --off:#8c3a52;
+  --ok:#2f7d32; --warn:#a46a00; --bad:#b3261e; --code:#e8ebe6;
+  --f-disp:"Barlow Condensed","Arial Narrow",sans-serif; --f-body:"Be Vietnam Pro","Segoe UI",system-ui,sans-serif; --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#111618; --sheet:#171d20; --ink:#e3e8e5; --ink2:#9aa6a9; --rule:#2e383c; --grid:#222b2e;
+  --alu:#9aa5a9; --brass:#d29b3c; --pzt:#cfc8b2; --sense:#3fb3c6; --act:#ef8443; --off:#d2789a;
+  --ok:#6cc070; --warn:#e0a63a; --bad:#ef6b62; --code:#0f1416; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#111618; --sheet:#171d20; --ink:#e3e8e5; --ink2:#9aa6a9; --rule:#2e383c; --grid:#222b2e;
+  --alu:#9aa5a9; --brass:#d29b3c; --pzt:#cfc8b2; --sense:#3fb3c6; --act:#ef8443; --off:#d2789a;
+  --ok:#6cc070; --warn:#e0a63a; --bad:#ef6b62; --code:#0f1416; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font:15px/1.6 var(--f-body);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 60px}
+.wrap{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+h1,h2,h3{font-family:var(--f-disp);letter-spacing:.01em;text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(30px,4.4vw,46px);font-weight:700}
+h2{font-size:28px;font-weight:600}
+h3{font-size:19px;font-weight:600}
+p{margin:0;max-width:72ch}
+a{color:var(--sense)}
+.mono,code,td.n,.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+code{font-size:.88em;background:var(--code);padding:1px 5px;border-radius:3px;overflow-wrap:anywhere}
+.eyebrow{font:600 12px/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink2)}
+section{display:flex;flex-direction:column;gap:14px}
+.sheet{background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:18px}
+/* khung tên */
+.titleblock{display:grid;grid-template-columns:1fr auto;gap:0;border:1.5px solid var(--ink);background:var(--sheet)}
+.titleblock .main{padding:18px 20px;display:flex;flex-direction:column;gap:8px;border-right:1.5px solid var(--ink);min-width:0}
+.titleblock .meta{display:grid;grid-template-columns:auto auto;font:12px/1.3 var(--f-mono)}
+.titleblock .meta div{padding:7px 12px;border-bottom:1px solid var(--rule)}
+.titleblock .meta div:nth-child(odd){color:var(--ink2);border-right:1px solid var(--rule)}
+@media (max-width:760px){.titleblock{grid-template-columns:1fr}.titleblock .main{border-right:0;border-bottom:1.5px solid var(--ink)}}
+nav.toc{display:flex;flex-wrap:wrap;gap:6px 16px;font:500 14px var(--f-disp);letter-spacing:.04em;text-transform:uppercase}
+nav.toc a{color:var(--ink);text-decoration:none;border-bottom:1.5px solid var(--rule)}
+nav.toc a:hover{border-color:var(--act)}
+.specs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.specs div{background:var(--sheet);padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.specs b{font:600 20px var(--f-mono)}
+.specs span{font-size:12.5px;color:var(--ink2)}
+/* mô phỏng */
+.sim{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(280px,1fr);gap:16px}
+@media (max-width:900px){.sim{grid-template-columns:1fr}}
+.viewport{position:relative;background:var(--grid);border:1px solid var(--rule);border-radius:4px;overflow:hidden;aspect-ratio:16/10;max-width:100%;touch-action:none}
+.viewport canvas{display:block;width:100%;height:100%}
+.vp-tools{position:absolute;left:8px;top:8px;display:flex;flex-wrap:wrap;gap:4px}
+.vp-legend{position:absolute;left:8px;bottom:8px;right:8px;display:flex;flex-wrap:wrap;gap:4px 12px;font:11.5px var(--f-mono);color:var(--ink2)}
+.vp-legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+.vp-status{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.chip{font:600 11.5px/1 var(--f-mono);letter-spacing:.04em;padding:5px 8px;border-radius:3px;border:1px solid currentColor;background:var(--sheet)}
+.chip.ok{color:var(--ok)}.chip.warn{color:var(--warn)}.chip.bad{color:var(--bad)}.chip.dim{color:var(--ink2)}
+.panel{display:flex;flex-direction:column;gap:14px;min-width:0}
+.ctl{display:flex;flex-direction:column;gap:6px}
+.ctl label span,.ctl .lbl span{text-transform:none;letter-spacing:0;font-weight:500}
+.ctl label,.ctl .lbl{font:600 12px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);display:flex;justify-content:space-between;gap:8px}
+.seg{display:flex;border:1px solid var(--ink2);border-radius:3px;overflow:hidden}
+.seg button{flex:1;border:0;border-right:1px solid var(--ink2);background:var(--sheet);color:var(--ink);font:600 13px var(--f-mono);padding:8px 4px;cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--sheet)}
+.btn{border:1px solid var(--ink2);background:var(--sheet);color:var(--ink);font:600 12.5px var(--f-mono);padding:7px 10px;border-radius:3px;cursor:pointer}
+.btn:hover{border-color:var(--act)}
+.btn.small{padding:4px 7px;font-size:11.5px}
+.btn.primary{background:var(--act);border-color:var(--act);color:#fff}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--sense);outline-offset:2px}
+input[type=range]{width:100%;accent-color:var(--act)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.oled{background:#000;border:6px solid #1d2a33;border-radius:3px;image-rendering:pixelated;width:100%;max-width:256px;aspect-ratio:2/1}
+.readouts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.readouts div{background:var(--sheet);padding:8px 10px}
+.readouts b{display:block;font:600 18px var(--f-mono)}
+.readouts span{font-size:12px;color:var(--ink2)}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:760px){.charts{grid-template-columns:1fr}}
+.chart{background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.chart canvas{width:100%;height:170px;display:block}
+.chart .cap{display:flex;justify-content:space-between;gap:8px;font:12px var(--f-mono);color:var(--ink2);flex-wrap:wrap}
+.key i{display:inline-block;width:14px;height:3px;vertical-align:3px;margin:0 4px 0 8px}
+/* bảng */
+.tbl{overflow-x:auto;border:1px solid var(--rule);border-radius:4px;background:var(--sheet)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--rule);text-align:left;vertical-align:top}
+th{font:600 12px var(--f-mono);letter-spacing:.05em;text-transform:uppercase;color:var(--ink2);background:var(--paper);position:sticky;top:0}
+td.n{text-align:right;white-space:nowrap}
+tr.grp td{font:600 13px var(--f-disp);letter-spacing:.06em;text-transform:uppercase;background:var(--paper);color:var(--ink2)}
+tr.total td{font-weight:600;border-top:2px solid var(--ink)}
+.pass{color:var(--ok);font-weight:600}.fail{color:var(--bad);font-weight:600}
+/* bản vẽ */
+.dwg{overflow-x:auto;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:8px}
+.dwg svg{display:block;min-width:720px;width:100%;height:auto}
+.dwg svg text{font-family:var(--f-mono);fill:var(--ink)}
+.cap-fig{font:12.5px var(--f-mono);color:var(--ink2)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:16px}
+.grid2>*{min-width:0}
+ol.steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:8px;max-width:90ch}
+ol.steps li::marker{font:600 14px var(--f-mono);color:var(--act)}
+ul.tight{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:5px}
+.phase{display:grid;grid-template-columns:150px minmax(0,1fr);gap:14px;padding:14px 0;border-top:1px solid var(--rule)}
+.phase:first-child{border-top:0}
+.phase .ph{font:600 15px var(--f-disp);letter-spacing:.05em;text-transform:uppercase}
+.phase .ph small{display:block;font:12px var(--f-mono);color:var(--ink2);text-transform:none;letter-spacing:0}
+@media (max-width:640px){.phase{grid-template-columns:1fr;gap:6px}}
+.issue{display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;padding:12px 0;border-top:1px solid var(--rule)}
+.issue:first-of-type{border-top:0}
+.sev{font:600 11px/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 6px;border-radius:3px;height:max-content;text-align:center;border:1px solid currentColor}
+.sev.s1{color:var(--bad)}.sev.s2{color:var(--warn)}.sev.s3{color:var(--ink2)}
+.issue p{max-width:95ch}
+.issue b.fix{color:var(--ok)}
+.callout{border-left:3px solid var(--bad);padding:10px 14px;background:var(--sheet)}
+pre.code{background:var(--code);border:1px solid var(--rule);border-radius:4px;padding:12px;overflow:auto;max-height:520px;font:12.5px/1.5 var(--f-mono);margin:0}
+details summary{cursor:pointer;font:600 14px var(--f-mono)}
+.mutedtxt{color:var(--ink2);font-size:13.5px}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+
+<div class="wrap">
+
+<header class="titleblock">
+  <div class="main">
+    <span class="eyebrow">Hồ sơ thiết kế – thi công · Đề tài NCKH</span>
+    <h1>Hệ thống triệt tiêu rung động chủ động bằng Piezo</h1>
+    <p class="mutedtxt">Dầm công-xôn nhôm 6061 300 × 30 × 1,5 mm, 4 đĩa PZT, ESP32 chạy PPF/DVF ở 1 kHz. Trang này gồm mô phỏng sản phẩm sau khi thi công, bản vẽ cơ khí, sơ đồ nguyên lý, danh mục linh kiện, quy trình lắp ráp, hiệu chỉnh, thí nghiệm và các điểm đã sửa so với báo cáo.</p>
+    <nav class="toc" aria-label="Mục lục">
+      <a href="#mo-phong">Mô phỏng</a><a href="#kiem-tra">Kiểm tra mục tiêu</a><a href="#ban-ve">Bản vẽ cơ khí</a><a href="#so-do-khoi">Sơ đồ khối</a><a href="#nguyen-ly">Sơ đồ nguyên lý</a><a href="#linh-kien">Linh kiện</a><a href="#thi-cong">Thi công</a><a href="#hieu-chinh">Hiệu chỉnh &amp; thí nghiệm</a><a href="#ra-soat">Rà soát báo cáo</a><a href="#firmware">Firmware</a>
+    </nav>
+  </div>
+  <div class="meta">
+    <div>Bản vẽ số</div><div>AVC-01</div>
+    <div>Tỉ lệ</div><div>1 : 2 (A3)</div>
+    <div>Đơn vị</div><div>mm</div>
+    <div>Vật liệu dầm</div><div>Al 6061-T6</div>
+    <div>Phiên bản</div><div>Rev B (đã sửa)</div>
+    <div>Ngày</div><div>23/10/2026</div>
+  </div>
+</header>
+
+<div class="specs" aria-label="Thông số chính">
+  <div><b>13,61 Hz</b><span>f₁ tính toán (đo lại sau khi dán)</span></div>
+  <div><b>85,3 Hz</b><span>f₂ · f₃ = 238,8 Hz</span></div>
+  <div><b>±26 V</b><span>Va cầu BTL (±13 V mỗi đĩa)</span></div>
+  <div><b>1 kHz</b><span>Vòng điều khiển, lõi 1</span></div>
+  <div><b>≥ 6 dB</b><span>Mục tiêu giảm tại cộng hưởng</span></div>
+  <div><b>&lt; 1/3</b><span>Mục tiêu thời gian tắt dần</span></div>
+  <div><b id="bomTotalTop">1.278.000 đ</b><span>Tổng linh kiện (&lt; 1,5 triệu)</span></div>
+</div>
+
+<!-- ======================= MÔ PHỎNG ======================= -->
+<section id="mo-phong">
+  <span class="eyebrow">01 · Mẫu thử số</span>
+  <h2>Mô phỏng sản phẩm sau khi thi công</h2>
+  <p class="mutedtxt">Mô hình dầm Euler–Bernoulli 3 mode và phần dư tĩnh mode 4–6, bộ điều khiển số chạy đúng như firmware: ADC 12 bit có nhiễu, lọc chống chồng phổ 339 Hz, HPF 1 Hz, PPF (Tustin) hoặc DVF, bão hòa ±1,5 V, DAC 8 bit, khuếch đại ×17,2. Kéo để xoay, cuộn hoặc chụm hai ngón để phóng to. Dao động được phóng đại để dễ nhìn.</p>
+  <div class="sim">
+    <div class="viewport" id="vp">
+      <canvas id="three" aria-label="Mô hình 3D hệ AVC đang dao động"></canvas>
+      <div class="vp-tools">
+        <button class="btn small" data-view="persp">Phối cảnh</button>
+        <button class="btn small" data-view="side">Chiếu cạnh</button>
+        <button class="btn small" data-view="root">Cận vùng piezo</button>
+        <button class="btn small" data-view="top">Chiếu bằng</button>
+      </div>
+      <div class="vp-status"><span class="chip dim" id="chipCtrl">ĐIỀU KHIỂN: OFF</span><span class="chip ok" id="chipStab">ỔN ĐỊNH</span></div>
+      <div class="vp-legend">
+        <span><i style="background:var(--sense)"></i>T1 cảm biến</span><span><i style="background:var(--act)"></i>T2, B1, B2 chấp hành</span><span><i style="background:#7a4cc2"></i>ADXL345</span><span id="exagLbl">phóng đại ×10</span>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ctl"><span class="lbl">Luật điều khiển <span>nút ON/OFF · MODE</span></span>
+        <div class="seg" id="segMode"><button data-v="off" aria-pressed="true">OFF</button><button data-v="ppf" aria-pressed="false">PPF</button><button data-v="dvf" aria-pressed="false">DVF</button></div></div>
+      <div class="ctl"><span class="lbl">Mức khuếch đại <span id="gainTxt">G = 0,40</span></span>
+        <div class="seg" id="segGain"><button data-v="0" aria-pressed="false">1</button><button data-v="1" aria-pressed="true">2</button><button data-v="2" aria-pressed="false">3</button><button data-v="3" aria-pressed="false">Thử 0,8</button></div></div>
+      <div class="ctl"><label for="fExc">Loa kích rung tại 120 mm <span id="fTxt">13,6 Hz</span></label>
+        <input type="range" id="fExc" min="2" max="100" step="0.1" value="13.6">
+        <div class="row"><button class="btn small" id="btnExc">Bật loa</button><button class="btn small" id="btnF1">Đặt = f₁</button><button class="btn small" id="btnF2">Đặt = f₂</button></div></div>
+      <div class="ctl"><label for="aExc">Lực kích <span id="aTxt">8 mN</span></label>
+        <input type="range" id="aExc" min="1" max="30" step="0.5" value="8"></div>
+      <div class="ctl"><span class="lbl">Va đập tại 260 mm <span>ống dẫn bi</span></span>
+        <div class="row"><button class="btn small primary" id="btnBall6">Thả bi Ø6 · 3 cm</button><button class="btn small" id="btnBall10">Bi Ø10 · 5 cm</button></div></div>
+      <div class="ctl"><span class="lbl">Bố trí cảm biến điều khiển</span>
+        <div class="seg" id="segLayout"><button data-v="fixed" aria-pressed="true">Đề xuất · T1</button><button data-v="report" aria-pressed="false">Báo cáo · 80 mm</button></div></div>
+      <div class="ctl"><span class="lbl">Hiển thị</span>
+        <div class="row">
+          <select id="exag" class="btn small" aria-label="Phóng đại"><option value="1">×1 thật</option><option value="5">×5</option><option value="10" selected>×10</option><option value="25">×25</option></select>
+          <select id="speed" class="btn small" aria-label="Tốc độ"><option value="1" selected>Thời gian thực</option><option value="0.25">Chậm ×4</option><option value="0.1">Chậm ×10</option></select>
+          <label class="mutedtxt" style="text-transform:none;letter-spacing:0;font:13px var(--f-body);display:flex;gap:5px;align-items:center"><input type="checkbox" id="trip" checked> Tự tắt khi mất ổn định</label>
+        </div></div>
+    </div>
+  </div>
+  <div class="grid2">
+    <div class="charts" style="grid-column:1/-1">
+      <div class="chart"><div class="cap"><span>Gia tốc đầu dầm a<sub>z</sub> (ADXL345, m/s²)</span><span class="key"><i style="background:var(--off)"></i>OFF<i style="background:var(--sense)"></i>ON</span></div><canvas id="cAcc"></canvas></div>
+      <div class="chart"><div class="cap"><span>Điện áp cầu Va = OUT1 − OUT2 (V)</span><span>giới hạn ±26 V</span></div><canvas id="cVa"></canvas></div>
+    </div>
+  </div>
+  <div class="grid2">
+    <div class="sheet" style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+      <div style="display:flex;flex-direction:column;gap:6px"><span class="eyebrow">OLED 0,96" trên hộp mạch</span><canvas id="oled" class="oled" width="128" height="64"></canvas></div>
+      <div class="readouts" style="flex:1;min-width:220px">
+        <div><b id="rRms">0,00</b><span>RMS gia tốc 1 s (m/s²)</span></div>
+        <div><b id="rRed">—</b><span>Giảm so với OFF, cùng kích thích</span></div>
+        <div><b id="rTip">0,00</b><span>Biên độ đầu dầm (mm)</span></div>
+        <div><b id="rVa">0,0</b><span>|Va| đỉnh 1 s (V)</span></div>
+        <div><b id="rDecay">—</b><span>Tắt dần 5 % lần va đập gần nhất</span></div>
+        <div><b id="rDecayOff">—</b><span>Cùng va đập, OFF (tham chiếu)</span></div>
+      </div>
+    </div>
+    <div class="sheet" style="display:flex;flex-direction:column;gap:8px">
+      <span class="eyebrow">Gợi ý thao tác</span>
+      <ol class="steps" style="font-size:14px">
+        <li>Bật loa, đặt = f₁ và chờ biên độ ổn định (tần số cộng hưởng, ζ ≈ 0,008).</li>
+        <li>Chọn PPF: biên độ đầu dầm giảm hơn 95 % trong khoảng 1 s.</li>
+        <li>Tắt loa, chọn OFF rồi thả bi Ø6: dao động kéo dài khoảng 4 s. Chọn PPF hoặc DVF rồi thả lại để so sánh.</li>
+        <li>Chọn <b>Báo cáo · 80 mm</b>, chọn DVF mức 3 rồi thả bi: mode 2 (85 Hz) tự kích vì cảm biến không đồng vị trí. Đây là lỗi số 1 ở mục Rà soát.</li>
+        <li>Chọn PPF mức “Thử 0,8” với bố trí đề xuất: vượt giới hạn ổn định G<sub>max</sub> ≈ 0,72, hệ tự dao động ở tần số thấp.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= KIỂM TRA MỤC TIÊU ======================= -->
+<section id="kiem-tra">
+  <span class="eyebrow">02 · Đối chiếu yêu cầu đề tài</span>
+  <h2>Kiểm tra mục tiêu bằng mô phỏng</h2>
+  <p class="mutedtxt">Tính lại mỗi khi đổi bố trí cảm biến. Kích thích tại cộng hưởng: lực 8 mN tại 120 mm (biên độ đầu dầm OFF ≈ 1,7 mm). Va đập: bi Ø6 thả 3 cm tại 260 mm. Các số liệu là dự đoán từ mô hình; số liệu thật cần điền vào Bảng 5.3 và 5.4 sau khi đo.</p>
+  <div class="grid2">
+    <div class="tbl"><table id="tblCheck"><thead><tr><th>Chế độ</th><th>Giảm tại f₁</th><th>Tắt dần 5 %</th><th>OFF/ON</th><th>|Va| max</th><th>Đạt?</th></tr></thead><tbody><tr><td colspan="6" class="mutedtxt">Đang tính…</td></tr></tbody></table></div>
+    <div class="chart"><div class="cap"><span>FRF đầu dầm / lực loa (dB, 1 mm/N = 0 dB)</span><span class="key"><i style="background:var(--off)"></i>OFF<i style="background:var(--act)"></i>PPF<i style="background:var(--sense)"></i>DVF</span></div><canvas id="cFrf" style="height:260px"></canvas><div class="cap"><span id="frfNote">PPF và DVF theo mức đang chọn</span></div></div>
+  </div>
+</section>
+
+<!-- ======================= BẢN VẼ ======================= -->
+<section id="ban-ve">
+  <span class="eyebrow">03 · Bản vẽ cơ khí</span>
+  <h2>Bản vẽ cơ khí</h2>
+  <div class="dwg" id="dwgSide"></div><span class="cap-fig">Hình 1 – Hình chiếu đứng tổng thể (thay cho Hình 4.1). Gốc tọa độ x = 0 tại mép ngàm.</span>
+  <div class="dwg" id="dwgTop"></div><span class="cap-fig">Hình 2 – Hình chiếu bằng, vị trí lỗ bắt trên đế.</span>
+  <div class="dwg" id="dwgBeam"></div><span class="cap-fig">Hình 3 – Bố trí linh kiện trên dầm, mặt trên và mặt dưới (thay cho Hình 4.3).</span>
+  <div class="grid2">
+    <div><div class="dwg" id="dwgClamp"></div><span class="cap-fig">Hình 4 – Chi tiết trụ ngàm và má kẹp.</span></div>
+    <div><div class="dwg" id="dwgStack"></div><span class="cap-fig">Hình 5 – Mặt cắt A–A qua cụm piezo (không theo tỉ lệ chiều dày).</span></div>
+  </div>
+  <div class="dwg" id="dwgShaker"></div><span class="cap-fig">Hình 6 – Bộ kích rung: loa, que đẩy carbon và khớp nam châm tháo nhanh; ống dẫn bi.</span>
+</section>
+
+<!-- ======================= SƠ ĐỒ KHỐI ======================= -->
+<section id="so-do-khoi">
+  <span class="eyebrow">04 · Kiến trúc</span>
+  <h2>Sơ đồ khối và lưu đồ</h2>
+  <div class="dwg" id="dwgBlock"></div><span class="cap-fig">Hình 7 – Sơ đồ khối, vòng điều khiển kín màu cam, đường đo đánh giá màu xanh.</span>
+  <div class="dwg" id="dwgFlow"></div><span class="cap-fig">Hình 8 – Lưu đồ firmware (lõi 1: vòng 1 kHz · lõi 0: giao diện, ADXL, Serial).</span>
+</section>
+
+<!-- ======================= NGUYÊN LÝ ======================= -->
+<section id="nguyen-ly">
+  <span class="eyebrow">05 · Điện tử</span>
+  <h2>Sơ đồ nguyên lý</h2>
+  <div class="dwg" id="schA"></div><span class="cap-fig">Hình 9 – Mạch A: đệm cảm biến T1 (U3A), cảm biến giám sát (U3D), đệm V<sub>ref</sub> (U3B), lọc chống chồng phổ.</span>
+  <div class="dwg" id="schB"></div><span class="cap-fig">Hình 10 – Mạch B: vi sai (U3C) và cầu BTL 2 × TDA2030A cấp cho piezo chấp hành.</span>
+  <div class="dwg" id="schC"></div><span class="cap-fig">Hình 11 – Mạch C: nguồn, ESP32, giao diện, kích rung.</span>
+  <div class="grid2">
+    <div class="tbl"><table><thead><tr><th>Chân ESP32</th><th>Nối tới</th><th>Chức năng</th></tr></thead><tbody>
+      <tr><td class="mono">GPIO34 (ADC1_6)</td><td>U3A qua R5 4,7 kΩ / C3</td><td>Cảm biến điều khiển T1</td></tr>
+      <tr><td class="mono">GPIO35 (ADC1_7)</td><td>U3D qua R25 / C7</td><td>Cảm biến giám sát Ø20 (80 mm)</td></tr>
+      <tr><td class="mono">GPIO39 (ADC1_3)</td><td>Con chạy VR2 10 kΩ</td><td>Chỉnh tần số loa 2–60 Hz</td></tr>
+      <tr><td class="mono">GPIO25 (DAC1)</td><td>R9 → U3C(+)</td><td>Tín hiệu điều khiển u</td></tr>
+      <tr><td class="mono">GPIO26 (DAC2)</td><td>C30 → R30/R31 → SW2 → PAM8403</td><td>Sin cho loa kích rung</td></tr>
+      <tr><td class="mono">GPIO21 / 22</td><td>SDA / SCL: OLED 0x3C, ADXL345 0x53</td><td>I²C 400 kHz</td></tr>
+      <tr><td class="mono">GPIO32 / 33 / 27</td><td>S1 ON/OFF · S2 MODE · S3 GAIN → GND</td><td>Kéo lên nội; giữ 1,5 s = chức năng phụ</td></tr>
+      <tr><td class="mono">3V3</td><td>R6, D3/D4, VR2, OLED, ADXL</td><td>Tham chiếu và nguồn logic</td></tr>
+      <tr><td class="mono">VIN / GND</td><td>+5 V LM2596 / điểm sao</td><td>Nguồn ESP32</td></tr>
+    </tbody></table></div>
+    <div class="tbl"><table><thead><tr><th>Nút mạch</th><th>Giá trị đo khi đứng yên</th><th>Ghi chú</th></tr></thead><tbody>
+      <tr><td class="mono">+15 / −15</td><td class="mono">+15,0 / −15,0 V ±0,5</td><td>Không tải ESP32</td></tr>
+      <tr><td class="mono">+5 V</td><td class="mono">5,00 ±0,1 V</td><td>Chỉnh LM2596 trước khi cắm ESP32</td></tr>
+      <tr><td class="mono">VREF_BUF</td><td class="mono">1,650 ±0,02 V</td><td>U3B pin 7</td></tr>
+      <tr><td class="mono">U3A out (pin 1)</td><td class="mono">≈ 1,65 V</td><td>Dao động quanh Vref khi gõ</td></tr>
+      <tr><td class="mono">u₁ (U3C pin 8)</td><td class="mono">0 ±20 mV</td><td>±0,83 V khi |u| = 1,5 V</td></tr>
+      <tr><td class="mono">OUT1, OUT2</td><td class="mono">0 ±50 mV</td><td>±13 V, ngược pha</td></tr>
+      <tr><td class="mono">OUT1 − OUT2</td><td class="mono">52 V đỉnh-đỉnh</td><td>Lệnh <code>t</code>: sin 13 Hz toàn thang</td></tr>
+    </tbody></table></div>
+  </div>
+</section>
+
+<!-- ======================= LINH KIỆN ======================= -->
+<section id="linh-kien">
+  <span class="eyebrow">06 · BOM</span>
+  <h2>Danh mục linh kiện</h2>
+  <p class="mutedtxt">Giá tham khảo thị trường 2026 (đồng). Ký hiệu khớp với sơ đồ nguyên lý. Thay đổi so với Bảng 4.1: TL072 → TL074, nguồn ±15 V cách ly, nam châm cho que đẩy, linh kiện bảo vệ theo datasheet TDA2030A, thêm biến trở tần số và dầm dự phòng.</p>
+  <div class="tbl"><table id="tblBom"><thead><tr><th>#</th><th>Ký hiệu</th><th>Linh kiện và thông số mua</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th><th>Ghi chú</th></tr></thead><tbody></tbody></table></div>
+  <div class="grid2">
+    <div class="tbl"><table><thead><tr><th>Điện trở (¼ W, 1 %)</th><th>Giá trị</th><th>Vị trí</th></tr></thead><tbody id="tblR"></tbody></table></div>
+    <div class="tbl"><table><thead><tr><th>Tụ, diode, khác</th><th>Giá trị</th><th>Vị trí</th></tr></thead><tbody id="tblC"></tbody></table></div>
+  </div>
+</section>
+
+<!-- ======================= THI CÔNG ======================= -->
+<section id="thi-cong">
+  <span class="eyebrow">07 · Quy trình</span>
+  <h2>Thi công từng bước</h2>
+  <div class="sheet" id="phases"></div>
+  <div class="callout"><b>An toàn.</b> Va đến ±26 V, ngắt nguồn trước khi chạm vào mặt gốm và đầu dây; bọc ống co nhiệt mọi mối hàn. Dầm nối GND nên chạm vào dầm an toàn. Không uốn dầm quá 10 mm ở đầu tự do (gốm PZT giòn). Đế tản nhiệt TDA2030A nối với −15 V: phải lót mica cách điện. Firmware khởi động ở OFF và tự tắt khi bão hòa kéo dài.</div>
+</section>
+
+<!-- ======================= HIỆU CHỈNH & THÍ NGHIỆM ======================= -->
+<section id="hieu-chinh">
+  <span class="eyebrow">08 · Vận hành</span>
+  <h2>Hiệu chỉnh và thí nghiệm đối chứng</h2>
+  <div class="grid2">
+    <div class="sheet"><h3>Hiệu chỉnh (làm một lần, lưu vào bộ nhớ)</h3><ol class="steps" id="calib"></ol></div>
+    <div class="sheet"><h3>Thí nghiệm theo mục 5.2.2</h3><ol class="steps" id="exper"></ol></div>
+  </div>
+</section>
+
+<!-- ======================= RÀ SOÁT ======================= -->
+<section id="ra-soat">
+  <span class="eyebrow">09 · Rà soát thiết kế</span>
+  <h2>Những điểm đã sửa so với báo cáo</h2>
+  <p class="mutedtxt">Mức độ: <b style="color:var(--bad)">Nghiêm trọng</b> = mô hình không đạt mục tiêu hoặc mất ổn định nếu làm đúng như báo cáo. <b style="color:var(--warn)">Lớn</b> = giảm hiệu quả hoặc độ bền. <b style="color:var(--ink2)">Nhỏ</b> = cần sửa trong báo cáo.</p>
+  <div class="sheet" id="issues"></div>
+</section>
+
+<!-- ======================= FIRMWARE ======================= -->
+<section id="firmware">
+  <span class="eyebrow">10 · Phần mềm</span>
+  <h2>Firmware và công cụ đo</h2>
+  <div class="grid2">
+    <div class="sheet" style="display:flex;flex-direction:column;gap:8px"><h3>Thao tác trên hộp mạch</h3>
+      <ul class="tight">
+        <li><b>S1 ON/OFF</b>: bật/tắt điều khiển (khởi động luôn OFF).</li>
+        <li><b>S2 MODE</b>: PPF ↔ DVF. <b>Giữ 1,5 s</b>: bật/tắt loa.</li>
+        <li><b>S3 GAIN</b>: mức 1 → 2 → 3. <b>Giữ 1,5 s</b>: tự nhận dạng f₁, H₀, chiều phân cực.</li>
+        <li><b>VR2</b>: tần số loa 2–60 Hz, hiện trên OLED. Biên độ chỉnh bằng núm trên PAM8403.</li>
+      </ul>
+      <h3>Lệnh Serial 921600 baud</h3>
+      <p class="mono" style="font-size:13px">f13.4 · a0.5 · e1/e0 · c1/c0 · m0/m1 · g0..2 · p13.4 · i · t</p>
+      <p class="mutedtxt">Tần số loa · biên độ 0–1 · loa bật/tắt · điều khiển bật/tắt · PPF/DVF · mức · tần số lọc PPF · nhận dạng · thử Va toàn thang. CSV gửi lên ở 800 Hz: <code>t_ms,y,u,az,on,mode,f_exc,exc_on</code>.</p>
+    </div>
+    <div class="sheet" style="display:flex;flex-direction:column;gap:8px"><h3>Hệ số khuếch đại theo giới hạn ổn định</h3>
+      <p>Firmware không dùng hằng số thử-sai. Bước nhận dạng phát sin 3 Hz (u = 0,5 V) và đo độ lợi tĩnh H₀ = |y|/|u|. Với PPF, hệ ổn định khi g·H₀ &lt; 1, nên chọn g = α/H₀ với α = 0,25 / 0,50 / 0,75. Ba mức này tương đương G = 0,2 / 0,4 / 0,6 trong báo cáo. Với DVF, g<sub>v</sub> = 2Δζ / (0,75·H₀·ω₁) cho Δζ = 0,02 / 0,05 / 0,08. Dấu của tương quan y–u cho luôn chiều phân cực, nên không phải sửa <code>SIGN</code> bằng tay.</p>
+      <p class="mutedtxt">Tệp trong repo: <code>avc_piezo/firmware/AVC_Piezo_ESP32/AVC_Piezo_ESP32.ino</code>, <code>avc_piezo/tools/ghi_du_lieu.py</code>, mô phỏng <code>avc_piezo/web/</code>.</p>
+    </div>
+  </div>
+  <details><summary>Xem mã nguồn vòng điều khiển 1 kHz</summary><pre class="code" id="codeCtrl"></pre></details>
+</section>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="sim-core.js"></script>
+<script src="content.js"></script>
+<script src="drawings.js"></script>
+<script src="app.js"></script>
