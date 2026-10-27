@@ -151,9 +151,9 @@ Mở Terminal trong thư mục dự án và chạy các lệnh sau:
   ```bash
   pio run -e test_pcb_all --target upload
   ```
-- **Nạp chỉ định rõ cổng COM (ví dụ COM16)**:
+- **Nạp chỉ định rõ cổng COM (ví dụ COM7)**:
   ```bash
-  pio run -e voice_parrot --target upload --upload-port COM16
+  pio run -e robot_combined --target upload --upload-port COM7
   ```
 - **Mở Serial Monitor kiểm tra**:
   ```bash
@@ -161,4 +161,35 @@ Mở Terminal trong thư mục dự án và chạy các lệnh sau:
   ```
 
 ---
-*Tài liệu được biên soạn phục vụ bàn giao và lưu hành nội bộ dự án Xiaozhi Robot.*
+
+## 🤖 5. Firmware Trợ Lý AI Xiaozhi Chính Thức (ESP-IDF) - Lắng Nghe Siri-Style
+
+Trong thư mục `xiaozhi-esp32/` đã tích hợp và biên dịch thành công board profile chính thức: **`esp32s3-companion-robot`**.
+
+### 🌟 Điểm nổi bật:
+1. **Lắng nghe tự động không cần bấm nút (như Siri):**
+   - Mạng nơ-ron nhận diện giọng nói offline **ESP-SR MultiNet**: Cậu chỉ cần gọi to rõ từ khóa **"Chào Nhi"** (hoặc nói vào mic), robot sẽ phát tiếng chuông *"Ting!"*, mở to mắt trên OLED SSD1306 và bắt đầu thu âm.
+   - **Đàm thoại liên tục (Continuous Listening)**: Thuật toán WebRTC VAD tự động ngắt câu khi người dừng nói và gửi lên server. Khi AI trả lời xong, robot **tự động mở mic nghe tiếp câu tiếp theo**, không cần bấm nút hay gọi lại từ khóa!
+2. **Khuôn mặt biểu cảm & Phụ đề tiếng Việt (`vi-VN`):**
+   - Màn hình OLED SSD1306 (128x64) hiển thị biểu cảm mắt động và phụ đề tiếng Việt.
+3. **Điều khiển cử động động cơ bằng giọng nói (MCP Tools):**
+   - Động cơ Mini L298N (`GPIO 4, 5, 6, 7`) được gắn với trí thông minh của Xiaozhi:
+     - *"Đi tới một chút đi"* $\rightarrow$ gọi `self.move_forward`
+     - *"Lùi lại một chút"* $\rightarrow$ gọi `self.move_backward`
+     - *"Rẽ trái / rẽ phải"* $\rightarrow$ gọi `self.turn_left` / `self.turn_right`
+     - *"Nhảy múa đi"* $\rightarrow$ gọi `self.dance` (lắc lư đung đưa 2 bánh xe)
+     - *"Dừng lại"* $\rightarrow$ gọi `self.stop`
+
+### ⚡ Lệnh Build & Nạp Firmware Xiaozhi:
+Mở PowerShell trong thư mục `xiaozhi-esp32/`:
+- **Biên dịch:**
+  ```powershell
+  .\build_companion_robot.ps1
+  ```
+- **Nạp vào mạch qua cổng COM (tự động nhận hoặc chỉ định COM7):**
+  ```powershell
+  .\flash_companion_robot.ps1 -Port COM7
+  ```
+
+---
+*Tài liệu được biên soạn và cập nhật liên tục phục vụ lưu trữ & bàn giao kỹ thuật dự án Xiaozhi Robot.*
