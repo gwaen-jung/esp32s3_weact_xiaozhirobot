@@ -1,102 +1,59 @@
-<div align="center">
+# XIAOZHI DESKTOP ROBOT - ESP32-S3 CUSTOM PCB
 
-# XIAOZHI DESK ROBOT DOG (ESP32-S3 WeAct CoreBoard N16R8)
-### Hệ thống Robot AI Để Bàn Điều Khiển Bằng Giọng Nói & Chuyển Động 4 Chân
+Dự án firmware mã nguồn mở cho Robot Trợ Lý Để Bàn Xiaozhi sử dụng vi điều khiển **ESP32-S3**, màn hình OLED I2C, hệ thống âm thanh I2S Full-Duplex (Micro INMP441 + Loa MAX98357A 3W) và động cơ điều khiển bánh xe Mini L298N.
 
-</div>
-
----
-
-## 📌 Tổng Quan Dự Án & Tiến Độ Hiện Tại
-
-Dự án phát triển robot trợ lý AI thông minh dạng chó để bàn (Desk Robot Dog) sử dụng vi điều khiển **ESP32-S3 WeAct Studio CoreBoard (N16R8)**. 
-
-### Tình trạng kiểm tra phần cứng (Đã hoàn thành hôm nay):
-1. ✅ **Màn hình hiển thị**: **TFT LCD 2.4 inch SPI (Driver ILI9341, 240x320)**
-   - Đã chạy mượt mà trên bus phần cứng **FSPI** (`Adafruit_ILI9341`).
-   - Hiển thị RoboEyes biểu cảm động, HUD trạng thái góc các chân, và thang đo âm thanh VU Meter.
-2. ✅ **Phát âm thanh (Amp/DAC)**: **WeAct Studio PCM5100A I2S DAC + Dual Speaker**
-   - Đã kiểm tra phát âm thanh tần số chuẩn và giai điệu nhạc chime trong trẻo.
-   - **Lưu ý cấu hình quan trọng**: Chân `MC` (Master Clock) bắt buộc nối xuống **GND** để kích hoạt bộ nhân xung nội PLL. Chân `SD` kéo lên **3.3V / VCC** để bật âm thanh (Unmute).
-3. ✅ **Thu âm giọng nói (Microphone)**: **INMP441 MEMS I2S Omnidirectional Mic**
-   - Chạy chuẩn I2S Full-Duplex dùng chung Clock (`BCLK = 16`, `WS = 17`) với PCM5100A.
-   - Đã đo và hiển thị biên độ âm thanh giọng nói / vỗ tay trực tiếp lên màn hình.
-4. ⚠️ **Hệ thống 4 Động cơ Chân (Servos)**: 4x Micro Servo SG90 / MG90S
-   - Đã cấu hình và test đảo chân theo đúng vị trí cơ khí:
-     - **Hai chân trước**: FL = `GPIO 7`, FR = `GPIO 4` (**servo 360°**, chỉ giữ điểm dừng)
-     - **Hai chân sau**: RL = `GPIO 6`, RR = `GPIO 5`
-   - Đã lập trình thuật toán điều khiển mượt mà tăng/giảm tốc Cosine S-Curve (các tư thế Stand, Sit, Wave, Crouch, Sweep).
-   - **Ghi chú phần cứng**: Phát hiện 2 servo bị kẹt cơ học / hỏng nhông, cần thay thế trong đợt lắp ráp tiếp theo.
+> 📄 **TÀI LIỆU HƯỚNG DẪN CHI TIẾT & LƯU Ý PHẦN CỨNG**:  
+> Xem chi tiết tại file [HUONG_DAN_SO_DO_CHAN_VA_LUU_Y.md](file:///d:/TRIAD%20PROJECT/Projects/esp32s3_weact_xiaozhirobot/HUONG_DAN_SO_DO_CHAN_VA_LUU_Y.md).
 
 ---
 
-## 🔌 Sơ Đồ Đấu Nối Chuẩn (Pinout Mapping)
+## 🔌 Sơ Đồ Chân Phần Cứng (Pinout)
 
+| Thiết bị | Chân thiết bị | GPIO ESP32-S3 | Ghi chú kỹ thuật |
+| :--- | :--- | :--- | :--- |
+| **Màn hình OLED SSD1306** | SDA | **GPIO 1** | Bus I2C 100 kHz (Địa chỉ `0x3C`) |
+| | SCL | **GPIO 2** | Bus I2C 100 kHz |
+| **Loa MAX98357A (Amp 3W)** | BCLK | **GPIO 11** | I2S Bit Clock (Dùng chung với Mic) |
+| | LRC / WS | **GPIO 12** | I2S Word Select (Dùng chung với Mic) |
+| | DIN | **GPIO 13** | I2S Data Out từ ESP32 |
+| | SD_MODE | **3.3V / VCC** | **BẮT BUỘC ĐÓNG JUMPER JP1** |
+| **Micro INMP441 (MEMS)** | SCK / BCLK | **GPIO 11** | I2S Bit Clock (Dùng chung với Loa) |
+| | WS | **GPIO 12** | I2S Word Select (Dùng chung với Loa) |
+| | SD | **GPIO 14** | I2S Data In vào ESP32 |
+| | L/R | **GND** | Kênh trái (Left Channel) |
+| **Động cơ Mini L298N** | IN1 / IN2 | **GPIO 4 / GPIO 5** | Motor A (Bánh trái) |
+| | IN3 / IN4 | **GPIO 6 / GPIO 7** | Motor B (Bánh phải) |
+| **Nút bấm người dùng** | BOOT / KEY | **GPIO 0** | Đổi chế độ giọng nói / Chuyển bài test |
+| **Đèn LED RGB** | WS2812 | **GPIO 48** | LED hiển thị trạng thái |
+
+---
+
+## ⚡ Các Điểm Lưu Ý Phần Cứng Trọng Yếu
+
+1. **Loa MAX98357A**: Chân `SD_MODE` có mạch trở 10k tụ 100uF xuống GND khiến IC bị ngắt nguồn (Shutdown) $\rightarrow$ **Bắt buộc phải đóng jumper `JP1`** nối chân `SD` lên nguồn `3.3V/VCC`.
+2. **Màn hình OLED**: Ký hiệu in lụa trên mạch có thể là `SCL: IO1, SDA: IO2`, thực tế kết nối chuẩn I2C là `SDA = GPIO 1, SCL = GPIO 2`, địa chỉ `0x3C`.
+3. **Micro INMP441**: Tránh để nhựa thông/cồn dính vào lỗ thu âm. Firmware đã tích hợp sẵn **DC Blocker** và **Auto-Gain Normalization (kích âm tự động lên tới 16x)** giúp tiếng loa luôn to rõ dù mic mới hàn có bị nhỏ.
+4. **Cấu hình ESP32-S3 Clone**: Dùng flash mode `dio`, memory type `qio_qspi`, không bật cờ `-DBOARD_HAS_PSRAM` trên chip clone để tránh lỗi treo boot.
+
+---
+
+## 🚀 Các Môi Trường Firmware Có Sẵn
+
+- **`[env:voice_parrot]` (Mặc định)**: Firmware Robot Nhại Giọng Thông Minh. Tự động nhận diện tiếng nói (VAD), tự động khuếch đại âm lượng, 3 chế độ đổi giọng bằng nút BOOT (Talking Tom x1.35, Giọng chuẩn x1.0, Robot trầm x0.8), cử động khuôn miệng OLED và đèn trạng thái RGB.
+- **`[env:test_pcb_all]`**: Bộ kiểm tra liên hoàn toàn bộ phần cứng mới (Màn hình OLED, Nhạc Mario, Động cơ A/B tiến lùi xoay, Quét tần số + Mic VU Meter, RoboEyes).
+- **`[env:test_speaker]`**: Test riêng biệt loa MAX98357A.
+
+---
+
+## 💻 Lệnh Nạp Code Nhanh (PlatformIO CLI)
+
+```bash
+# Nạp Robot Nhại Giọng (Voice Parrot)
+pio run -e voice_parrot --target upload
+
+# Nạp Bộ Test Toàn Diện Mạch (Test All PCB)
+pio run -e test_pcb_all --target upload
+
+# Mở Serial Monitor xem log ở baudrate 115200
+pio device monitor -b 115200
 ```
-                            ┌───────────────────┐
-                      3.3V ─┤ 3V3           GND ├─ GND
-                       EN  ─┤ EN             44 ├─ (UART0 RX)
-     SERVO_FR (Tr-Ph,360) ─┤ 4              43 ├─ (UART0 TX)
-          SERVO_RR (Sau-Ph) ─┤ 5              42 ├─ (Reserved / TFT MISO)
-          SERVO_RL (Sau-Tr) ─┤ 6              41 ├─ TFT_MOSI / SDI
-          SERVO_FL (Tr-Tr)  ─┤ 7              40 ├─ TFT_SCLK / SCK
-        I2C_SDA (Laser/IMU) ─┤ 8              39 ├─ TFT_CS
-        I2C_SCL (Laser/IMU) ─┤ 9              38 ├─ TFT_DC / RS
-                   (Free)  ─┤ 10             37 ├─ (PSRAM OPI - CẤM DÙNG)
-                   (Free)  ─┤ 11             36 ├─ (PSRAM OPI - CẤM DÙNG)
-                   (Free)  ─┤ 12             35 ├─ (PSRAM OPI - CẤM DÙNG)
-                   (Free)  ─┤ 13              0 ├─ BOOT Button (Sweep Test)
-         I2S_DIN (Mic SD)  ─┤ 14             45 ├─ (Strapping - CẤM DÙNG)
-        I2S_DOUT (Amp DIN) ─┤ 15             48 ├─ Onboard WS2812 RGB LED
-        I2S_BCLK (Shared)  ─┤ 16             47 ├─ TFT_RST / RESET
-         I2S_WS  (Shared)  ─┤ 17             21 ├─ (Free GPIO)
-                   (Free)  ─┤ 18             19 ├─ USB D- (Native USB)
-                       5V  ─┤ 5V             20 ├─ USB D+ (Native USB)
-                            └───────────────────┘
-                                    [USB-C]
-```
-
-### Bảng Kết Nối Chi Tiết
-
-| Chức năng | Module | Chân Module | Chân ESP32-S3 | Ghi chú kỹ thuật |
-| :--- | :--- | :--- | :--- | :--- |
-| **Màn hình LCD 2.4"** | **ILI9341 SPI** | SCK / SCLK | **GPIO 40** | Bus FSPI Clock |
-| | | MOSI / SDI | **GPIO 41** | Bus FSPI Data |
-| | | CS | **GPIO 39** | Chip Select |
-| | | DC / RS | **GPIO 38** | Data/Command |
-| | | RESET | **GPIO 47** | Reset chân cứng |
-| | | LED | **3.3V** | Đèn nền (Backlight) |
-| | | VCC / GND | **3.3V / GND** | Nguồn màn hình |
-| **Microphone** | **INMP441 I2S** | SCK | **GPIO 16** | Dùng chung Bit Clock |
-| | | WS | **GPIO 17** | Dùng chung Word Select |
-| | | SD | **GPIO 14** | Data Out từ Mic vào ESP32 DIN |
-| | | L/R | **GND** | Kênh trái (Left Channel) |
-| | | VDD / GND | **3.3V / GND** | Nguồn Mic |
-| **DAC & Loa** | **PCM5100A I2S** | BCK | **GPIO 16** | Dùng chung Bit Clock |
-| | | WS | **GPIO 17** | Dùng chung Word Select |
-| | | DIN | **GPIO 15** | Data Out từ ESP32 DOUT |
-| | | MC | **GND** | **NỐI GND ĐỂ BẬT INTERNAL PLL** |
-| | | SD | **3.3V / VCC** | Unmute DAC |
-| | | VCC / GND | **5V / GND** | Nguồn công suất loa |
-| **4 Chân Servos** | **SG90 / MG90S** | FL Signal | **GPIO 7** | Chân trước bên trái |
-| | | FR Signal | **GPIO 4** | Chân trước bên phải (servo 360°) |
-| | | RL Signal | **GPIO 6** | Chân sau bên trái |
-| | | RR Signal | **GPIO 5** | Chân sau bên phải |
-| | | VCC / GND | **5V Nguồn ngoài ≥ 3A / GND** | Mass chung với ESP32 |
-| **Cảm biến (Dự kiến)**| **VL53L0X & MPU6050** | SDA | **GPIO 8** | I2C Data chung |
-| | | SCL | **GPIO 9** | I2C Clock chung |
-| | | VCC / GND | **3.3V / GND** | Nguồn cảm biến |
-
----
-
-## 🚀 Kế Hoạch Tiếp Theo (Roadmap Ngày Mai)
-
-1. **Cảm biến đo khoảng cách Laser ToF VL53L0X**:
-   - Kết nối vào bus I2C (`SDA=8`, `SCL=9`).
-   - Lập trình nhận diện vật cản trước mặt và nhận diện người đến gần.
-2. **Cảm biến con quay hồi chuyển & gia tốc MPU-6050**:
-   - Kết nối chung bus I2C (`SDA=8`, `SCL=9`).
-   - Nhận biết góc nghiêng của robot, trạng thái bị nhấc bổng hoặc ngã để kích hoạt phản ứng tự vệ/kêu cứu.
-3. **Firmware Trợ lý AI Xiaozhi (ESP-IDF Voice Chatbot)**:
-   - Sử dụng source code `c:\Users\trung\Downloads\xiaozhi-esp32-dog\xiaozhi-esp32`.
-   - Kết nối Wi-Fi, tích hợp đàm thoại AI Xiaozhi Cloud tiếng Việt (`vi-VN`), đồng bộ biểu cảm mắt RoboEyes và cử động chân theo trạng thái trò chuyện.

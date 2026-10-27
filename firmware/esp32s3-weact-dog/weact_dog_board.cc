@@ -21,6 +21,7 @@
 #include "led/single_led.h"
 #include "leg_servos.h"
 #include "mcp_server.h"
+#include "assets/lang_config.h"
 #include "tof_sensor.h"
 #include "wifi_board.h"
 
@@ -210,7 +211,20 @@ private:
                 return std::string(buf);
             });
 
-        ESP_LOGI(TAG, "Registered Dog MCP tools: self.control_dog_legs, self.set_leg_angle, self.save_stand_pose, self.get_leg_angles, self.get_front_distance");
+        // 6. Tool play_music: phát bài nhạc Canon in D qua loa
+        mcp_server.AddTool(
+            "self.play_music",
+            "Phát một bài nhạc vui vẻ (Canon in D) qua loa của robot.",
+            PropertyList(),
+            [this](const PropertyList& /*properties*/) -> ToolResult {
+                Application::GetInstance().PlaySound(Lang::Sounds::OGG_MUSIC);
+                if (display_) {
+                    display_->SetEmotion("laugh");
+                }
+                return std::string("Đang phát bài nhạc Canon in D cho bạn nghe nè!");
+            });
+
+        ESP_LOGI(TAG, "Registered Dog MCP tools: self.control_dog_legs, self.set_leg_angle, self.save_stand_pose, self.get_leg_angles, self.get_front_distance, self.play_music");
     }
 
     static void LogResetReason() {
@@ -284,6 +298,15 @@ private:
                 return;
             }
             app.ToggleChatState();
+        });
+
+        // Nhấp đúp nút BOOT: Phát bài nhạc Canon in D
+        boot_button_.OnDoubleClick([this]() {
+            ESP_LOGI(TAG, "BOOT double click -> Play music");
+            Application::GetInstance().PlaySound(Lang::Sounds::OGG_MUSIC);
+            if (display_) {
+                display_->SetEmotion("laugh");
+            }
         });
     }
 

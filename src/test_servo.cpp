@@ -1,29 +1,23 @@
 /**
  * ============================================================================
- * XIAOZHI ROBOT DOG - BÀI TEST TỔNG DUYỆT 4 CHÂN LẦN CUỐI (FINAL SUITE)
+ * XIAOZHI ROBOT DOG - TEST 4 SERVO 180°
  * Môi trường: [env:test_servo] (PlatformIO)
  * MCU: WeAct Studio ESP32-S3 CoreBoard N16R8
  * Display: 2.4" SPI TFT LCD (ILI9341, 240x320)
  * ============================================================================
- * 
- * SƠ ĐỒ ĐẤU NỐI 4 CHÂN SERVO:
- *   - FL (Trên Trái  - Front-Left):  GPIO 7 (LEDC Ch 0) - Servo 180°
- *   - FR (Trên Phải  - Front-Right): GPIO 4 (LEDC Ch 1) - [SERVO 360° ĐÃ XỬ LÝ]
- *   - RL (Dưới Trái  - Rear-Left):   GPIO 6 (LEDC Ch 2) - Servo 180°
- *   - RR (Dưới Phải  - Rear-Right):  GPIO 5 (LEDC Ch 3) - Servo 180°
+ *
+ * SƠ ĐỒ ĐẤU NỐI 4 CHÂN SERVO (tất cả 180°):
+ *   - FL (Trước Trái / Front-Left):  GPIO 6  (LEDC Ch 0)
+ *   - FR (Trước Phải / Front-Right): GPIO 5  (LEDC Ch 1)
+ *   - RL (Sau  Trái / Rear-Left):   GPIO 7  (LEDC Ch 2)
+ *   - RR (Sau  Phải / Rear-Right):  GPIO 4  (LEDC Ch 3)
  *   - Nguồn: 5V ngoài cấp chung GND với ESP32
- * 
- * TÍNH NĂNG ĐẶC BIỆT TRONG BÀI TEST CUỐI CÙNG:
- *   1. Chế độ TỰ ĐỘNG DIỄN (Auto Demo Cycle):
- *      Cún tự động diễn mượt mà các tư thế: STAND -> SIT -> WAVE -> CROUCH -> WIGGLE.
- *   2. Chế độ THỦ CÔNG (Manual Control):
- *      Gõ lệnh qua Serial ('stand', 'sit', 'wave', 'crouch', 'wiggle', 'all 90'...)
- *      hoặc nhấn nút BOOT để chuyển tư thế theo ý muốn.
- *   3. Điều khiển mượt mà Cosine S-curve chống giật và chống sụt áp nguồn.
- *   4. Chân số 4 (Servo 360) được điều khiển giữ điểm dừng (90°) và nhích theo nhịp,
- *      hoàn toàn không bị quay tròn tít mù.
- *   5. Giao diện mắt RoboEyes sống động biểu cảm theo từng tư thế trên màn hình LCD 2.4".
- * ============================================================================
+ *
+ * TÍNH NĂNG:
+ *   1. Chế độ TỰ ĐỘNG DIỄN (Auto Demo): STAND -> SIT -> WAVE -> CROUCH -> WIGGLE.
+ *   2. Chế độ THỦ CÔNG: gõ lệnh Serial (stand, sit, wave, crouch, wiggle...)
+ *      hoặc nhấn nút BOOT để chuyển tư thế.
+ *   3. Điều khiển mượt Cosine S-curve chống giật và chống sụt áp nguồn.
  */
 
 #include <Arduino.h>
@@ -51,10 +45,10 @@ static Adafruit_ILI9341 tft(&tftSPI, TFT_DC, TFT_CS, TFT_RST);
 
 // --- CẤU HÌNH 4 CHÂN SERVO ---
 #ifndef SERVO_PIN_FL
-#define SERVO_PIN_FL 7
-#define SERVO_PIN_FR 4
-#define SERVO_PIN_RL 6
-#define SERVO_PIN_RR 5
+#define SERVO_PIN_FL 6
+#define SERVO_PIN_FR 5
+#define SERVO_PIN_RL 7
+#define SERVO_PIN_RR 4
 #endif
 
 #ifndef PIN_BOOT_BTN
@@ -62,10 +56,10 @@ static Adafruit_ILI9341 tft(&tftSPI, TFT_DC, TFT_CS, TFT_RST);
 #endif
 
 enum LegIndex {
-  LEG_FL = 0,  // GPIO 7 (180° - Trên Trái)
-  LEG_FR = 1,  // GPIO 4 (360° - Trên Phải)
-  LEG_RL = 2,  // GPIO 6 (180° - Dưới Trái)
-  LEG_RR = 3,  // GPIO 5 (180° - Dưới Phải)
+  LEG_FL = 0,  // GPIO 6 (180° - Trước Trái)
+  LEG_FR = 1,  // GPIO 5 (180° - Trước Phải)
+  LEG_RL = 2,  // GPIO 7 (180° - Sau Trái)
+  LEG_RR = 3,  // GPIO 4 (180° - Sau Phải)
   LEG_COUNT = 4
 };
 
@@ -81,17 +75,15 @@ struct LegState {
 };
 
 static LegState legs[LEG_COUNT] = {
-  {"Tren Trai (FL)", "FL", SERVO_PIN_FL, 0, 90, 90, false, false}, // Chân 180° (GPIO 7)
-  {"Tren Phai (FR)", "FR", SERVO_PIN_FR, 1, 90, 90, true,  false}, // Chân 360° (GPIO 4)
-  {"Duoi Trai (RL)", "RL", SERVO_PIN_RL, 2, 90, 90, false, false}, // Chân 180° (GPIO 6)
-  {"Duoi Phai (RR)", "RR", SERVO_PIN_RR, 3, 90, 90, false, false}  // Chân 180° (GPIO 5)
+  {"Truoc Trai (FL)", "FL", SERVO_PIN_FL, 0, 90, 90, false, false}, // GPIO 6 (180°)
+  {"Truoc Phai (FR)", "FR", SERVO_PIN_FR, 1, 90, 90, false, false}, // GPIO 5 (180°)
+  {"Sau  Trai (RL)", "RL", SERVO_PIN_RL, 2, 90, 90, false, false}, // GPIO 7 (180°)
+  {"Sau  Phai (RR)", "RR", SERVO_PIN_RR, 3, 90, 90, false, false}  // GPIO 4 (180°)
 };
 
-static const int MIN_ANGLE = 40;
-static const int MAX_ANGLE = 140;
+static const int MIN_ANGLE = 30;
+static const int MAX_ANGLE = 150;
 
-// Cấu hình điểm dừng cho servo 360
-static int deadband360 = 90;
 
 enum OperationalMode {
   MODE_AUTO_DEMO,  // Tự động diễn chuỗi tư thế
@@ -116,7 +108,7 @@ int angleToDuty(int angle) {
 
 void applyServoDuty(int legIdx, int angle) {
   if (!globalAttached || !legs[legIdx].attached) {
-    ledcWrite(legs[legIdx].channel, 0); // Ngắt xung PWM
+    ledcWrite(legs[legIdx].channel, 0);
     return;
   }
   int duty = angleToDuty(angle);
@@ -230,8 +222,8 @@ void drawHUD(const char* poseName, uint16_t eyeColor, int eyeH = 60, int pupX = 
   tft.setTextColor(ILI9341_CYAN);
   tft.setTextSize(1);
   tft.setCursor(8, 226);
-  tft.printf("PWM: %s | FR(G%d): %s", globalAttached ? "ON" : "OFF (relax)",
-             legs[LEG_FR].pin, legs[LEG_FR].isServo360 ? "360, dung o trim4" : "180");
+  tft.printf("PWM: %s | 4 servo 180 | FL:G6 FR:G5 RL:G7 RR:G4",
+             globalAttached ? "ON" : "OFF (relax)");
 
   lastHudPose = poseName;
 }
@@ -251,12 +243,10 @@ void setPoseSmooth(const char* poseName, int targetFL, int targetFR, int targetR
     startAngles[i] = legs[i].currentAngle;
   }
 
-  // Chân 360 (FR - Trên Phải - GPIO 4) giữ quanh deadband để không quay tròn
-  int safeFR = legs[LEG_FR].isServo360 ? deadband360 : constrain(targetFR, MIN_ANGLE, MAX_ANGLE);
-
+  // Tat ca servo deu la 180° -> dung constrain thong thuong
   int targets[LEG_COUNT] = {
     constrain(targetFL, MIN_ANGLE, MAX_ANGLE),
-    safeFR,
+    constrain(targetFR, MIN_ANGLE, MAX_ANGLE),
     constrain(targetRL, MIN_ANGLE, MAX_ANGLE),
     constrain(targetRR, MIN_ANGLE, MAX_ANGLE)
   };
@@ -297,38 +287,38 @@ void setPoseSmooth(const char* poseName, int targetFL, int targetFR, int targetR
 // CÁC TƯ THẾ CHUẨN
 // ----------------------------------------------------------------------------
 void poseStand() {
-  setPoseSmooth("STAND (Dung thang)", 90, deadband360, 90, 90, 600, ILI9341_CYAN, 60);
+  setPoseSmooth("STAND (Dung thang)", 90, 90, 90, 90, 600, ILI9341_CYAN, 60);
 }
 
 void poseSit() {
-  setPoseSmooth("SIT (Ngoi xuong)", 100, deadband360, 120, 120, 700, ILI9341_GREEN, 50);
+  setPoseSmooth("SIT (Ngoi xuong)", 110, 110, 70, 70, 700, ILI9341_GREEN, 50);
 }
 
 void poseCrouch() {
-  setPoseSmooth("CROUCH (Cui thap)", 65, deadband360, 65, 65, 600, ILI9341_ORANGE, 40);
+  setPoseSmooth("CROUCH (Cui thap)", 70, 70, 110, 110, 600, ILI9341_ORANGE, 40);
 }
 
 void poseWave() {
   poseSit();
   delay(150);
-  // Vẫy chân trên trái FL (GPIO 7 - 180°)
+  // Vay chan truoc trai FL (GPIO 6 - 180°)
   for (int w = 0; w < 3; w++) {
-    setPoseSmooth("WAVE (Vay chao)", 125, deadband360, 120, 120, 200, ILI9341_YELLOW, 70, 15, -10);
+    setPoseSmooth("WAVE (Vay chao)", 140, 110, 70, 70, 200, ILI9341_YELLOW, 70, 15, -10);
     delay(80);
-    setPoseSmooth("WAVE (Vay chao)", 80, deadband360, 120, 120, 200, ILI9341_YELLOW, 70, -15, -10);
+    setPoseSmooth("WAVE (Vay chao)",  70, 110, 70, 70, 200, ILI9341_YELLOW, 70, -15, -10);
     delay(80);
   }
-  setPoseSmooth("SIT (Ngoi xuong)", 100, deadband360, 120, 120, 300, ILI9341_GREEN, 50);
+  setPoseSmooth("SIT (Ngoi xuong)", 110, 110, 70, 70, 300, ILI9341_GREEN, 50);
 }
 
 void poseWiggle() {
   poseStand();
   delay(100);
-  // Lắc 2 chân sau RL (GPIO 6) và RR (GPIO 5)
+  // Lac 2 chan sau RL (GPIO 7) va RR (GPIO 4)
   for (int w = 0; w < 3; w++) {
-    setPoseSmooth("WIGGLE (Lac mong)", 90, deadband360, 110, 70, 180, ILI9341_MAGENTA, 65, 12, 0);
+    setPoseSmooth("WIGGLE (Lac mong)", 90, 90, 110, 70, 180, ILI9341_MAGENTA, 65, 12, 0);
     delay(60);
-    setPoseSmooth("WIGGLE (Lac mong)", 90, deadband360, 70, 110, 180, ILI9341_MAGENTA, 65, -12, 0);
+    setPoseSmooth("WIGGLE (Lac mong)", 90, 90,  70, 110, 180, ILI9341_MAGENTA, 65, -12, 0);
     delay(60);
   }
   poseStand();
@@ -393,55 +383,19 @@ void handleSerialCommand(String cmd) {
     return;
   }
 
-  // Đổi loại servo FR: xử lý TRƯỚC lệnh "all"/"fr <do>" để không bị nhánh khác bắt mất
-  if (cmd == "fr 180") {
-    legs[LEG_FR].isServo360 = false;
-    Serial.println("[CONFIG] >>> Da chuyen FR (GPIO 4) thanh SERVO 180 TIEU CHUAN!");
-    drawHUD("FR -> SERVO 180", ILI9341_GREEN, 60);
-    return;
-  }
-
-  if (cmd == "fr 360") {
-    legs[LEG_FR].isServo360 = true;
-    Serial.println("[CONFIG] >>> Da chuyen FR (GPIO 4) thanh SERVO 360 (quay lien tuc)!");
-    legs[LEG_FR].currentAngle = deadband360;
-    applyServoDuty(LEG_FR, deadband360);
-    drawHUD("FR -> SERVO 360", ILI9341_ORANGE, 60);
-    return;
-  }
-
   if (cmd.startsWith("all ")) {
     int deg = cmd.substring(4).toInt();
     currentMode = MODE_MANUAL;
-    // FR được setPoseSmooth tự giữ deadband nếu là servo 360
     setPoseSmooth("ALL SERVO DEG", deg, deg, deg, deg, 400);
     return;
   }
 
-  // Chỉnh điểm dừng cho chân 360 (FR - GPIO 4)
-  if (cmd.startsWith("trim4")) {
-    int spaceIdx = cmd.indexOf(' ');
-    if (spaceIdx > 0) {
-      deadband360 = cmd.substring(spaceIdx + 1).toInt();
-      deadband360 = constrain(deadband360, 80, 100);
-      legs[LEG_FR].currentAngle = deadband360;
-      applyServoDuty(LEG_FR, deadband360);
-      Serial.printf("[SERVO 360] Diem dung moi cho FR (GPIO 4): %d do\n", deadband360);
-      return;
-    }
-  }
-
-  // Góc từng chân
+  // Chinh goc tung chan rieng le (tat ca 180 do)
   for (int i = 0; i < LEG_COUNT; i++) {
     String codeStr = legs[i].code;
     codeStr.toLowerCase();
     codeStr += ' ';
     if (cmd.startsWith(codeStr)) {
-      if (legs[i].isServo360) {
-        Serial.printf("[WARN] %s dang la servo 360 (goc = toc do). Dung 'trim4 <80-100>' "
-                      "de chinh diem dung, hoac 'fr 180' neu da thay servo 180.\n", legs[i].code);
-        return;
-      }
       int val = cmd.substring(codeStr.length()).toInt();
       int safeVal = constrain(val, MIN_ANGLE, MAX_ANGLE);
       currentMode = MODE_MANUAL;
@@ -449,14 +403,14 @@ void handleSerialCommand(String cmd) {
       legs[i].currentAngle = safeVal;
       applyServoDuty(i, safeVal);
       Serial.printf("[SERVO] Chan %s -> %d do%s\n", legs[i].code, safeVal,
-                    (safeVal != val) ? " (da gioi han 40-140)" : "");
+                    (safeVal != val) ? " (da gioi han 30-150)" : "");
       drawHUD("CHINH GOC LE", ILI9341_YELLOW, 60);
       return;
     }
   }
 
   Serial.println("[WARN] Lenh: stand | sit | wave | crouch | wiggle | demo | relax | attach |"
-                 " all <do> | fl/rl/rr <do> | fr 180 | fr 360 | trim4 <80-100>");
+                 " all <do> | fl/fr/rl/rr <do>");
 }
 
 // ----------------------------------------------------------------------------

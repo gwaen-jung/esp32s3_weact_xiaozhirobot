@@ -88,16 +88,16 @@ struct LegConfig {
 };
 
 static constexpr LegConfig kLegConfig[LEG_COUNT] = {
-    {PIN_SERVO_FL, 0, false, false}, // 180° front-left (GPIO 7)
-    {PIN_SERVO_FR, 0, true,  true},  // 360° continuous rotation front-right (GPIO 4)
-    {PIN_SERVO_RL, 0, false, true},  // 360° continuous rotation rear-left (GPIO 6)
-    {PIN_SERVO_RR, 0, true,  false}, // 180° rear-right (GPIO 5)
+    {PIN_SERVO_FL, 0, false, false}, // 180° truoc-trai  (GPIO 6)
+    {PIN_SERVO_FR, 0, true,  false}, // 180° truoc-phai  (GPIO 5) -- invert vi lap nguoc
+    {PIN_SERVO_RL, 0, false, false}, // 180° sau-trai    (GPIO 7)
+    {PIN_SERVO_RR, 0, true,  false}, // 180° sau-phai    (GPIO 4) -- invert vi lap nguoc
 };
 
-#define SERVO_STAND_FL_DEG       8     // Chân trước trái (180°)
-#define SERVO_STAND_FR_DEG       91    // Chân trước phải (360° deadband stop)
-#define SERVO_STAND_RL_DEG       97    // Chân sau trái (360° deadband stop)
-#define SERVO_STAND_RR_DEG       57    // Chân sau phải (180°)
+#define SERVO_STAND_FL_DEG       90    // Truoc trai (180°) - trung tinh
+#define SERVO_STAND_FR_DEG       90    // Truoc phai (180°) - trung tinh
+#define SERVO_STAND_RL_DEG       90    // Sau trai   (180°) - trung tinh
+#define SERVO_STAND_RR_DEG       90    // Sau phai   (180°) - trung tinh
 
 #define SERVO_NEUTRAL_DEG        90
 #define SERVO_MIN_DEG            0     // cho phép về 0 độ

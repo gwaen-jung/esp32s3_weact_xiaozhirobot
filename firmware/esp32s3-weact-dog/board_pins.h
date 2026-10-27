@@ -23,11 +23,11 @@
 #define PIN_I2S_DIN   GPIO_NUM_14  // INMP441 SD  -> ESP32
 #define PIN_I2S_DOUT  GPIO_NUM_15  // ESP32 -> PCM5100A DIN
 
-// ---- Servo legs: 4 PWM outputs (FL, FR, RL, RR) -----------------------------
-#define PIN_SERVO_FL  GPIO_NUM_7  // Front-Left (180°)
-#define PIN_SERVO_FR  GPIO_NUM_4  // Front-Right (360° continuous rotation)
-#define PIN_SERVO_RL  GPIO_NUM_6  // Rear-Left (360° continuous rotation)
-#define PIN_SERVO_RR  GPIO_NUM_5  // Rear-Right (180°)
+// ---- Servo legs: 4 PWM outputs (FL, FR, RL, RR) - tat ca 180° ----------------
+#define PIN_SERVO_FL  GPIO_NUM_6  // Front-Left  / Truoc Trai (180°)
+#define PIN_SERVO_FR  GPIO_NUM_5  // Front-Right / Truoc Phai (180°)
+#define PIN_SERVO_RL  GPIO_NUM_7  // Rear-Left   / Sau Trai   (180°)
+#define PIN_SERVO_RR  GPIO_NUM_4  // Rear-Right  / Sau Phai   (180°)
 
 // ---- I2C sensors -----------------------------------------------------------
 // VL53L0X ToF at 0x29 (hand < 5 cm -> start listening). MPU6050 (0x68) shares
