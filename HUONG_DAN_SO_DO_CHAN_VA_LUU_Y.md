@@ -94,19 +94,22 @@ Toàn bộ các chân GPIO trên bo mạch được phân bổ tối ưu, không
 
 ## 🚀 3. Danh Sách Firmware & Hướng Dẫn Sử Dụng
 
-Trong thư mục `src/` đã xây dựng sẵn 3 bộ firmware phục vụ các mục đích khác nhau:
+Trong thư mục `src/` đã xây dựng sẵn 4 bộ firmware phục vụ các mục đích khác nhau:
 
-### 1️⃣ Firmware Robot Nhại Giọng: `src/voice_parrot.cpp` (Mặc định)
+### 🌟 Firmware Kết Hợp Đỉnh Cao (All-in-One): `src/xiaozhi_robot_combined.cpp` (Mặc định)
+- **Tên môi trường PlatformIO**: `[env:robot_combined]`
+- **Tính năng hợp nhất trọn vẹn**:
+  - **Tương tác giọng nói**: Micro INMP441 + Loa MAX98357A full-duplex I2S với thuật toán VAD thích ứng tạp âm nền phòng, bộ lọc DC Blocker 20Hz, khuếch đại tự động Auto-Gain 16x và chống dội âm Cooldown.
+  - **3 chế độ giọng**: Bấm nhả nút BOOT (`GPIO 0`) để chuyển đổi giữa Talking Tom ($1.35\times$), Giọng Chuẩn ($1.0\times$), Robot Trầm ($0.80\times$).
+  - **RoboEyes & Khuôn miệng động**: Mắt RoboEyes chớp nháy tự nhiên trên OLED SSD1306, thỉnh thoảng liếc nhìn xung quanh khi chờ; mở to tập trung khi nghe; há miệng cử động linh hoạt theo biên độ câu nói.
+  - **Cử động bánh xe thông minh (Mini L298N)**:
+    - *Gật đầu / Nhích nhẹ*: Ngay khi phát hiện tiếng người nói, robot khẽ nhích bánh xe báo hiệu "Tớ đang lắng nghe bạn!".
+    - *Nhảy múa theo nhịp (Dance)*: Khi phát loa nhại giọng, 2 bánh xe xoay nhẹ đung đưa nhịp nhàng theo tiết tấu âm thanh.
+    - *Khóa an toàn trên bàn cao (Desk Safety Lock)*: Giữ nút BOOT > 1.2s để Bật/Tắt motor di chuyển (trên màn hình sẽ hiển thị `[M:ON]` hoặc `[M:OFF]`), tránh robot vô tình chạy rơi khỏi mép bàn làm việc!
+
+### 1️⃣ Firmware Robot Nhại Giọng Đơn Thuần: `src/voice_parrot.cpp`
 - **Tên môi trường PlatformIO**: `[env:voice_parrot]`
-- **Tính năng**:
-  - **Tự động nhận diện giọng nói (VAD)**: Cậu chỉ cần nói vào Mic, robot tự động ghi âm vào RAM. Khi dừng nói khoảng 0.55s, robot tự động nhại lại ngay lập tức.
-  - **Chống Echo / Vòng lặp phản hồi âm**: Xả sạch bộ đệm âm thanh sau khi phát loa để robot không bao giờ bị tình trạng tự thu lại tiếng loa của chính mình.
-  - **3 Chế độ đổi giọng bằng nút BOOT (`GPIO 0`)**:
-    1. 🐱 **TALKING TOM** (Mặc định): Tần số nâng cao $1.35\times$ (giọng chú mèo Tom / sóc chuột Chipmunk cực vui nhộn).
-    2. 🎙️ **GIỌNG CHUẨN**: Tần số $1.0\times$ (giữ nguyên chất giọng gốc).
-    3. 🤖 **ROBOT TRẦM**: Tần số hạ thấp $0.80\times$ (giọng người máy siêu trầm).
-  - **Màn hình OLED**: Hiển thị mắt biểu cảm và cử động khuôn miệng há to/nhỏ nhịp nhàng theo câu nói.
-  - **Đèn LED RGB (`GPIO 48`)**: Xanh dương (Chờ nghe) $\rightarrow$ Đỏ (Đang ghi âm) $\rightarrow$ Xanh lá (Đang phát loa nhại).
+- **Tính năng**: Toàn bộ tính năng nhại giọng, pitch-shift và biểu cảm RoboEyes nhưng ngắt motor hoàn toàn để tiết kiệm năng lượng và tập trung xử lý âm thanh.
 
 ### 2️⃣ Firmware Kiểm Tra Toàn Diện Phần Cứng: `src/test_pcb_all.cpp`
 - **Tên môi trường PlatformIO**: `[env:test_pcb_all]`
