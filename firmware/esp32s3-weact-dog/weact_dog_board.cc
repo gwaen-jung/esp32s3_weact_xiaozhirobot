@@ -151,45 +151,24 @@ private:
     EyesDisplay* display_ = nullptr;
     LegServos legs_;
     DogBehavior* behavior_ = nullptr;
-    spi_device_handle_t touch_spi_ = nullptr;
     TaskHandle_t touch_task_ = nullptr;
-
-    uint16_t Xpt2046Read(uint8_t cmd) {
-        if (!touch_spi_) return 0;
-        uint8_t tx[3] = {cmd, 0x00, 0x00};
-        uint8_t rx[3] = {0, 0, 0};
-        spi_transaction_t t = {};
-        t.length = 24;
-        t.tx_buffer = tx;
-        t.rx_buffer = rx;
-        if (spi_device_transmit(touch_spi_, &t) != ESP_OK) return 0;
-        return (uint16_t)(((rx[1] << 8) | rx[2]) >> 3);
-    }
 
     static void TouchTaskEntry(void* arg) {
         static_cast<WeactDogBoard*>(arg)->TouchLoop();
     }
 
+    // Pure hardware PENIRQ polling on GPIO 18 (PIN_TOUCH_IRQ):
+    // XPT2046 is armed with 0xD0 (PD1:PD0=00) once before LCD init, and T_CS (GPIO 21)
+    // is held HIGH afterward so SPI2_HOST is 100% dedicated to ILI9341 DMA without contention.
     void TouchLoop() {
-        // Ensure PENIRQ (PD1:PD0 = 00) is enabled at startup
-        Xpt2046Read(0xD0);
-
         bool armed = true;
         int press_count = 0;
         int release_count = 0;
         int64_t last_trigger_ms = 0;
 
         while (true) {
-            vTaskDelay(pdMS_TO_TICKS(40));
-            uint16_t z1 = Xpt2046Read(0xB1);
-            uint16_t z2 = Xpt2046Read(0xC1);
-            uint16_t raw_x = Xpt2046Read(0x91);
-            uint16_t raw_y = Xpt2046Read(0xD0);  // PD=00 re-enables T_IRQ
-
-            int z = (int)z1 + 4095 - (int)z2;
-            bool pressed = (z1 > 60 && z1 < 4090 && z > 400 &&
-                            raw_x > 100 && raw_x < 4000 &&
-                            raw_y > 100 && raw_y < 4000);
+            vTaskDelay(pdMS_TO_TICKS(30));
+            bool pressed = (gpio_get_level(PIN_TOUCH_IRQ) == 0);
 
             int64_t now = esp_timer_get_time() / 1000;
             if (pressed) {
@@ -202,10 +181,10 @@ private:
                     auto& app = Application::GetInstance();
                     DeviceState state = app.GetDeviceState();
                     if (state == kDeviceStateIdle || state == kDeviceStateSpeaking) {
-                        ESP_LOGI(TAG, "Touch screen (Z=%d, X=%u, Y=%u) -> listen", z, raw_x, raw_y);
+                        ESP_LOGI(TAG, "Touch screen (PENIRQ LOW) -> listen");
                         app.ToggleChatState();
                     } else {
-                        ESP_LOGI(TAG, "Touch screen in state %d -> wink", (int)state);
+                        ESP_LOGI(TAG, "Touch screen (PENIRQ LOW) in state %d -> wink", (int)state);
                         if (display_) display_->Wink();
                     }
                 }
@@ -220,16 +199,9 @@ private:
 
     // Touch on TPM408-2.8inch (XPT2046): tap screen -> start listening (or interrupt speaking).
     void InitializeTouch() {
-        spi_device_interface_config_t devcfg = {};
-        devcfg.clock_speed_hz = 2 * 1000 * 1000;  // 2 MHz for XPT2046
-        devcfg.mode = 0;
-        devcfg.spics_io_num = PIN_TOUCH_CS;
-        devcfg.queue_size = 1;
-        ESP_ERROR_CHECK(spi_bus_add_device(DISPLAY_SPI_HOST, &devcfg, &touch_spi_));
-
         xTaskCreate(&WeactDogBoard::TouchTaskEntry, "touch_xpt", 4096, this, 2, &touch_task_);
-        ESP_LOGI(TAG, "XPT2046 Touch initialized on SPI2 (CS=%d, IRQ=%d, MISO=%d)",
-                 PIN_TOUCH_CS, PIN_TOUCH_IRQ, PIN_TFT_MISO);
+        ESP_LOGI(TAG, "XPT2046 Touch PENIRQ listener started (CS=%d held HIGH, IRQ=%d)",
+                 PIN_TOUCH_CS, PIN_TOUCH_IRQ);
     }
 
     static void LogResetReason() {
@@ -270,9 +242,9 @@ private:
 #endif
 
     void InitializeSpi() {
-        // Keep XPT2046 T_CS high while LCD initializes
-        gpio_set_direction(PIN_TOUCH_CS, GPIO_MODE_OUTPUT);
-        gpio_set_level(PIN_TOUCH_CS, 1);
+        // Keep LCD CS high while arming XPT2046 PENIRQ
+        gpio_set_direction(PIN_TFT_CS, GPIO_MODE_OUTPUT);
+        gpio_set_level(PIN_TFT_CS, 1);
 
         gpio_config_t irq_io = {};
         irq_io.pin_bit_mask = (1ULL << PIN_TOUCH_IRQ);
@@ -288,6 +260,24 @@ private:
         buscfg.quadhd_io_num = GPIO_NUM_NC;
         buscfg.max_transfer_sz = DISPLAY_WIDTH * EYES_PUSH_LINES * sizeof(uint16_t) + 64;
         ESP_ERROR_CHECK(spi_bus_initialize(DISPLAY_SPI_HOST, &buscfg, SPI_DMA_CH_AUTO));
+
+        // Arm XPT2046 PENIRQ (0xD0: PD1:PD0 = 00) once before LCD DMA starts, then release SPI device
+        spi_device_interface_config_t touch_cfg = {};
+        touch_cfg.clock_speed_hz = 2 * 1000 * 1000;
+        touch_cfg.mode = 0;
+        touch_cfg.spics_io_num = PIN_TOUCH_CS;
+        touch_cfg.queue_size = 1;
+        spi_device_handle_t touch_dev = nullptr;
+        if (spi_bus_add_device(DISPLAY_SPI_HOST, &touch_cfg, &touch_dev) == ESP_OK) {
+            uint8_t tx[3] = {0xD0, 0x00, 0x00};
+            spi_transaction_t t = {};
+            t.length = 24;
+            t.tx_buffer = tx;
+            spi_device_transmit(touch_dev, &t);
+            spi_bus_remove_device(touch_dev);
+        }
+        gpio_set_direction(PIN_TOUCH_CS, GPIO_MODE_OUTPUT);
+        gpio_set_level(PIN_TOUCH_CS, 1);
     }
 
     void InitializeDisplay() {
