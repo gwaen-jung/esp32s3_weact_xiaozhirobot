@@ -1,20 +1,21 @@
 /**
  * ============================================================================
- * TEST MICROPHONE INMP441 TRÊN WEACT ESP32-S3 (GPIO 4, 5, 6)
+ * TEST MICROPHONE INMP441 TRÊN WEACT ESP32-S3 (CHUẨN V03: SCK=16, WS=17, SD=14)
  * ============================================================================
- * Sơ đồ đấu dây (theo sơ đồ cậu gửi):
+ * Sơ đồ đấu dây Mic Trái (PA Cũ - Robot AI V03 PCB MAIN):
  *  - VCC -> 3V3
- *  - GND -> GND (Chân L/R nối GND = Kênh LEFT, hoặc nối 3V3 = Kênh RIGHT)
- *  - WS  -> GPIO 4
- *  - SCK -> GPIO 5 (BCLK)
- *  - SD  -> GPIO 6 (DOUT của Mic -> DIN của ESP32)
+ *  - GND -> GND
+ *  - L/R -> GND (Kênh LEFT; nếu test Mic Phải nối L/R -> 3V3)
+ *  - WS  -> GPIO 17
+ *  - SCK -> GPIO 16 (BCLK)
+ *  - SD  -> GPIO 14 (DOUT của Mic -> DIN của ESP32)
  *
  * Tính năng nổi bật:
  *  - Tự động đọc Stereo (Left + Right) và phát hiện kênh hoạt động (`LEFT(GND)` / `RIGHT(3V3)`).
  *  - Bộ lọc IIR High-Pass 20Hz chặn DC Offset chuẩn ReShape Lab.
  *  - Tự động hiệu chuẩn nền nhiễu phòng (Dynamic Noise Floor Calibration) giúp
  *    phân biệt cực nhạy giữa Im lặng (SILENT), Giọng nói (VOICE), và Tiếng vỗ tay/gõ (LOUD!).
- *  - Hiển thị thanh VU Meter trực quan trên Serial (COM21 - 115200 baud).
+ *  - Hiển thị thanh VU Meter trực quan + RMS_L / RMS_R trên Serial (COM18 - 115200 baud).
  *  - Nháy LED RGB WS2812 trên GPIO 48 theo cường độ âm thanh thực tế:
  *      + Im lặng (Nền phòng): Xanh dương dịu
  *      + Có tiếng nói (VOICE): Xanh lá cây sáng theo giọng
@@ -27,15 +28,15 @@
 #include <math.h>
 
 #ifndef PIN_INMP441_WS
-#define PIN_INMP441_WS   4
+#define PIN_INMP441_WS   17
 #endif
 
 #ifndef PIN_INMP441_SCK
-#define PIN_INMP441_SCK  5
+#define PIN_INMP441_SCK  16
 #endif
 
 #ifndef PIN_INMP441_SD
-#define PIN_INMP441_SD   6
+#define PIN_INMP441_SD   14
 #endif
 
 #define PIN_RGB_LED      48
@@ -109,9 +110,9 @@ void setup() {
   Serial.begin(115200);
   delay(500);
 
-  // Đưa các chân không dùng về INPUT an toàn
+  // Đưa các chân không dùng về INPUT an toàn (tránh 14, 16, 17 đang dùng cho I2S Mic)
   const int safe_unused[] = {
-    1, 2, 3, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 38, 39, 40, 41, 42, 47
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 18, 21, 38, 39, 40, 41, 42, 47
   };
   for (int p : safe_unused) {
     pinMode(p, INPUT);
@@ -121,10 +122,11 @@ void setup() {
   neopixelWrite(PIN_RGB_LED, 0, 0, 20);
 
   Serial.println("\n================================================================");
-  Serial.println("   TRIAD / RESHAPE LAB - TEST MICROPHONE INMP441 (ESP32-S3)");
+  Serial.println("   TRIAD / RESHAPE LAB - TEST MIC TRAI INMP441 (V03 PA CU)");
   Serial.println("================================================================");
   Serial.printf("  Pinout: WS = GPIO %d | SCK (BCLK) = GPIO %d | SD = GPIO %d\n",
                 PIN_INMP441_WS, PIN_INMP441_SCK, PIN_INMP441_SD);
+  Serial.println("  Mic Trai: L/R -> GND (neu test Mic Phai: L/R -> 3V3)");
   Serial.println("  LED GPIO 48: Xanh Duong = Im lang | Xanh La = Giong noi | Do = To!");
   Serial.println("================================================================\n");
 
@@ -259,7 +261,7 @@ void loop() {
     else if (isLoud)       statusTag = "LOUD!  ";
     else if (isVoice)      statusTag = "VOICE  ";
 
-    Serial.printf("[%s] %s | RMS:%5.0f (Floor:%4.0f) | Peak:%5d | %5.1fdB | [%s]\n",
-                  statusTag, activeCh, smoothRms, noiseFloor, peakBest, dbfs, vuBar);
+    Serial.printf("[%s] %s | L:%5.0f R:%5.0f | RMS:%5.0f (Floor:%4.0f) | Peak:%5d | %5.1fdB | [%s]\n",
+                  statusTag, activeCh, rmsL, rmsR, smoothRms, noiseFloor, peakBest, dbfs, vuBar);
   }
 }
