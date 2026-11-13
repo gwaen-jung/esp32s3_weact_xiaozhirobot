@@ -6,28 +6,33 @@
 
 #include <driver/gpio.h>
 
-// ---- TFT ILI9341 2.4" (SPI) ------------------------------------------------
+// ---- TFT ILI9341 2.8" TPM408-2.8 (SPI) + XPT2046 Touch ---------------------
 #define PIN_TFT_DC    GPIO_NUM_38
 #define PIN_TFT_CS    GPIO_NUM_39
 #define PIN_TFT_SCLK  GPIO_NUM_40
 #define PIN_TFT_MOSI  GPIO_NUM_41
-#define PIN_TFT_MISO  GPIO_NUM_NC  // write-only panel
+#define PIN_TFT_MISO  GPIO_NUM_42  // XPT2046 T_DO (MISO)
 #define PIN_TFT_RST   GPIO_NUM_47
 #define PIN_TFT_BL    GPIO_NUM_NC  // backlight tied to 3.3V
 
+#define PIN_TOUCH_CS  GPIO_NUM_21  // XPT2046 T_CS
+#define PIN_TOUCH_IRQ GPIO_NUM_18  // XPT2046 T_IRQ (active low)
+
 // ---- Audio: one full-duplex I2S bus -----------------------------------------
-// INMP441 (mic, L/R -> GND = left slot) and PCM5100A (DAC, MC -> GND = internal
-// PLL, XSMT -> 3.3V = always unmuted) share BCLK and WS.
+// INMP441 (mic, L/R -> GND = left slot) and the WeAct I2S Speaker V1
+// (PCM5100A + dual PA; header VCC GND SD MC BCK DIN WS, VCC -> 5V, SD -> 3.3V =
+// enabled, MC -> GND = internal PLL) share BCK and WS. Speakers on R+/R-, L+/L-.
 #define PIN_I2S_BCLK  GPIO_NUM_16
 #define PIN_I2S_WS    GPIO_NUM_17
 #define PIN_I2S_DIN   GPIO_NUM_14  // INMP441 SD  -> ESP32
 #define PIN_I2S_DOUT  GPIO_NUM_15  // ESP32 -> PCM5100A DIN
 
-// ---- Servo legs: 4 PWM outputs (FL, FR, RL, RR) - tat ca 180° ----------------
-#define PIN_SERVO_FL  GPIO_NUM_6  // Front-Left  / Truoc Trai (180°)
-#define PIN_SERVO_FR  GPIO_NUM_5  // Front-Right / Truoc Phai (180°)
-#define PIN_SERVO_RL  GPIO_NUM_7  // Rear-Left   / Sau Trai   (180°)
-#define PIN_SERVO_RR  GPIO_NUM_4  // Rear-Right  / Sau Phai   (180°)
+// ---- Servo legs (signal only; V+ from a separate 5 V >= 3 A supply) --------
+// FR is a continuous-rotation servo, see kLegConfig in dog_config.h.
+#define PIN_SERVO_FL  GPIO_NUM_7
+#define PIN_SERVO_FR  GPIO_NUM_4
+#define PIN_SERVO_RL  GPIO_NUM_6
+#define PIN_SERVO_RR  GPIO_NUM_5
 
 // ---- I2C sensors -----------------------------------------------------------
 // VL53L0X ToF at 0x29 (hand < 5 cm -> start listening). MPU6050 (0x68) shares

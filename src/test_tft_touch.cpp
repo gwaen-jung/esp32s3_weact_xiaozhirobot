@@ -65,25 +65,39 @@ public:
     return (digitalRead(irqPin) == LOW);
   }
 
-  bool readRaw(uint16_t &rawX, uint16_t &rawY, uint16_t &rawZ) {
-    if (!isTouched()) return false;
-    
-    // Lấy áp suất chạm (Z1, Z2)
+  // Đọc trực tiếp Z1, Z2, X, Y qua SPI (luôn kết thúc bằng PD=00 để giữ T_IRQ hoạt động,
+  // đồng thời hoạt động được ngay cả khi không cắm dây T_IRQ)
+  bool readRaw(uint16_t &rawX, uint16_t &rawY, uint16_t &rawZ, uint16_t *outZ1 = nullptr, uint16_t *outZ2 = nullptr) {
+    digitalWrite(TFT_CS, HIGH); // Đảm bảo nhả CS của màn hình ILI9341 trước khi đọc Touch
+
+    // Lấy áp suất chạm (Z1, Z2) - dùng 0xB1, 0xC1
     uint16_t z1 = transferCmd(0xB1);
     uint16_t z2 = transferCmd(0xC1);
-    rawZ = 4095 - (z2 - z1);
+    if (outZ1) *outZ1 = z1;
+    if (outZ2) *outZ2 = z2;
 
-    if (rawZ < 300) return false; // Lọc chạm nhẹ / nhiễu
-
-    // Đọc X và Y trung bình 3 lần
+    // Đọc X và Y trung bình 4 lần, lệnh cuối dùng PD=00 (0x90, 0xD0) để bật lại PENIRQ
     uint32_t xSum = 0, ySum = 0;
-    for (int i = 0; i < 3; i++) {
-      xSum += transferCmd(0x90); // Đọc X (differential 12-bit)
-      ySum += transferCmd(0xD0); // Đọc Y (differential 12-bit)
+    for (int i = 0; i < 4; i++) {
+      xSum += transferCmd(0x91); // Đọc X (ADC ON)
+      ySum += transferCmd(0xD1); // Đọc Y (ADC ON)
     }
-    rawX = xSum / 3;
-    rawY = ySum / 3;
-    return true;
+    // Lệnh cuối cùng đưa về PD=00 để kích hoạt lại chân T_IRQ
+    transferCmd(0xD0);
+
+    rawX = xSum / 4;
+    rawY = ySum / 4;
+
+    // Tính áp suất chạm Z: khi chạm thực tế, z1 > 50 và (4095 - z2 + z1) tăng cao
+    int32_t z = (int32_t)z1 + 4095 - (int32_t)z2;
+    if (z < 0) z = 0;
+    rawZ = (uint16_t)z;
+
+    // Điều kiện chạm hợp lệ: z1 phải > 40 (có dòng qua tấm điện trở) và z1 < 4090 (không bị treo mức cao)
+    if (z1 > 40 && z1 < 4090 && rawZ > 350 && rawX > 100 && rawX < 4000 && rawY > 100 && rawY < 4000) {
+      return true;
+    }
+    return false;
   }
 };
 
@@ -135,11 +149,12 @@ void setup() {
 }
 
 void loop() {
-  uint16_t rawX, rawY, rawZ;
+  uint16_t rawX, rawY, rawZ, z1, z2;
   static uint32_t lastTouchTime = 0;
+  static uint32_t lastDiagTime = 0;
   static bool wasTouched = false;
 
-  if (touch.readRaw(rawX, rawY, rawZ)) {
+  if (touch.readRaw(rawX, rawY, rawZ, &z1, &z2)) {
     // Ánh xạ tọa độ raw (khoảng 300 - 3800) sang màn hình 320x240 ngang
     int screenX = map(rawX, 350, 3850, 0, 320);
     int screenY = map(rawY, 350, 3850, 0, 240);
@@ -161,10 +176,16 @@ void loop() {
     tft.setCursor(10, 222);
     tft.printf("TOUCH! X:%3d Y:%3d  Raw(%4d,%4d,Z:%4d)", screenX, screenY, rawX, rawY, rawZ);
 
-    Serial.printf("[TOUCH] Screen(%3d, %3d) | Raw X:%4d Y:%4d Z:%4d\n", screenX, screenY, rawX, rawY, rawZ);
+    Serial.printf("[TOUCH] Screen(%3d, %3d) | Raw X:%4d Y:%4d Z:%4d (Z1:%4d Z2:%4d IRQ:%d)\n",
+                  screenX, screenY, rawX, rawY, rawZ, z1, z2, digitalRead(TOUCH_IRQ));
     lastTouchTime = millis();
     delay(10);
   } else {
+    if (millis() - lastDiagTime >= 500) {
+      lastDiagTime = millis();
+      Serial.printf("[DIAG] IRQ:%d | Z1:%4d Z2:%4d Z:%4d | X:%4d Y:%4d\n",
+                    digitalRead(TOUCH_IRQ), z1, z2, rawZ, rawX, rawY);
+    }
     if (wasTouched && (millis() - lastTouchTime > 4000)) {
       // 4 giây không chạm thì hiện lại RoboEyes
       tft.fillRect(6, 33, 308, 173, ILI9341_BLACK);
